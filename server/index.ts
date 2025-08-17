@@ -9,70 +9,62 @@ import { registerRoutes } from "./routes.js";
 import { initAutoRunner } from "./autoRunner.js";
 import { setupVite, serveStatic, log } from "./vite.js";
 import "dotenv/config";
+import cors from "cors";
 
 /*******************************************************************
- * 2. 先建 app → 再建 httpServer → 再建 socket.io
+ * 2. 建立 app → httpServer → socket.io
  *******************************************************************/
 const app = express();
 const httpServer = http.createServer(app);
-const io = new IOServer(httpServer, { cors: { origin: "*" } });
+const io = new IOServer(httpServer, {
+  cors: { origin: "*" },
+});
 
-/* autoRunner 只需呼叫一次，放這裡即可 */
+/* autoRunner 只需呼叫一次 */
 initAutoRunner(io);
 
 /*******************************************************************
  * 3. 中介層 & 靜態檔
  *******************************************************************/
-const UPLOAD_ROOT = process.env.UPLOAD_ROOT || path.join(path.resolve(), "uploads");
-
+app.use(cors({ origin: "*" }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
-app.use("/uploads", express.static(UPLOAD_ROOT));
+
+app.use("/uploads", express.static(path.join(path.resolve(), "uploads")));
 app.use("/processed_images", express.static(path.join(path.resolve(), "processed_images")));
 app.use("/base_images", express.static(path.join(path.resolve(), "base_images")));
 app.use(express.static("dist"));
 
 /*******************************************************************
- * 4. 其餘 API 路由 (含紅點路由) 交給 registerRoutes
+ * 4. 其餘 API 路由 (含紅點路由)
  *******************************************************************/
 (async () => {
-  /* registerRoutes 內部已把 /api/*, * fallback 全掛到 app */
   await registerRoutes(app);
 
   /********************* 5. Error middleware **********************/
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
     const status = err.status || err.statusCode || 500;
     res.status(status).json({ message: err.message || "Internal Server Error" });
-    throw err;
+    console.error(err);
   });
 
   /********************* 6. Dev / Prod - Vite ********************/
   if (app.get("env") === "development") {
-    await setupVite(app, httpServer);     // dev 熱更新
+    await setupVite(app, httpServer); // dev 熱更新
   } else {
-    serveStatic(app);                     // prod 靜態目錄
+    serveStatic(app); // prod 靜態目錄
   }
 
   /********************* 7. 啟動 HTTP + WS 伺服器 *****************/
-//   const PORT = process.env.PORT || 5000;
-//   httpServer.listen(PORT, () => {
-//   console.log(`🚀 HTTP + Socket.IO running on http://localhost:${PORT}`);
-//   });
-// })
-
-
-//   const PORT = 5000;
-//   httpServer.listen(PORT, () =>
-//     console.log(` HTTP + Socket.IO running on http://localhost:${PORT}`),
-//   );
-// })();
   const PORT = process.env.PORT || 5000;
-  httpServer.listen(PORT, () => {
-    console.log(`🚀 HTTP + Socket.IO running on http://localhost:${PORT}`);
-  });
+  httpServer.listen(
+  {
+    port: PORT,
+    host: "0.0.0.0",
+  },
+  () => {
+    console.log(`🚀 Server running at http://0.0.0.0:${PORT}`);
+  }
+);
 
-    //   const PORT = 5000;
-    //   httpServer.listen(PORT, '0.0.0.0', () => {
-    //     console.log(`Server running on http://localhost:${PORT}`);
-    //   });
-    // })();
+})();

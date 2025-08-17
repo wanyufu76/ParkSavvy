@@ -20,5 +20,10 @@ export default defineConfig({
   build: {
     outDir: path.resolve(__dirname, "dist"),
     emptyOutDir: true
+  },
+  server: {
+    allowedHosts: true, // ✅ 允許 cloudflared 的隨機網址
+    host: true,          // 讓外部能訪問 (不只限 localhost)
+    port: 5173           // 開發伺服器的 port
   }
 });
