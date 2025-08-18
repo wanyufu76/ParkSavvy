@@ -4,11 +4,15 @@
   "type": "module",
   "license": "MIT",
   "scripts": {
-  "build": "tsc -p server/tsconfig.json",
-  "start": "node dist/server/index.js",
-  "dev": "tsx server/index.ts",
-  "check": "tsc --noEmit"
-},                    
+    "server:build": "tsc -p server/tsconfig.json",
+    "client:build": "vite build",
+
+    "build": "npm run server:build && npm run client:build",
+    "start": "node dist/server/index.js",
+
+    "dev": "cross-env NODE_ENV=development tsx server/index.ts",
+    "check": "tsc --noEmit"
+  },              
   "dependencies": {
     "@babel/preset-typescript": "^7.27.1",
     "@hookform/resolvers": "^3.10.0",

@@ -3,7 +3,6 @@ import react from "@vitejs/plugin-react";
 import path from "path";
 import { fileURLToPath } from "url";
 
-// ⛑️ 模擬 __dirname
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -13,17 +12,18 @@ export default defineConfig({
     alias: {
       "@": path.resolve(__dirname, "client", "src"),
       "@shared": path.resolve(__dirname, "shared"),
-      "@assets": path.resolve(__dirname, "attached_assets")
-    }
+      "@assets": path.resolve(__dirname, "attached_assets"),
+    },
   },
   root: path.resolve(__dirname, "client"),
   build: {
+    // 👉 會輸出到「專案根/dist」
     outDir: path.resolve(__dirname, "dist"),
-    emptyOutDir: true
+    emptyOutDir: true,
   },
   server: {
-    allowedHosts: true, // ✅ 允許 cloudflared 的隨機網址
-    host: true,          // 讓外部能訪問 (不只限 localhost)
-    port: 5173           // 開發伺服器的 port
-  }
+    allowedHosts: [".trycloudflare.com", "localhost", "127.0.0.1"],
+    host: true,
+    port: 5173,
+  },
 });

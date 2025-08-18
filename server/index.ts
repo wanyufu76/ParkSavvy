@@ -58,13 +58,8 @@ app.use(express.static("dist"));
   /********************* 7. 啟動 HTTP + WS 伺服器 *****************/
   const PORT = process.env.PORT || 5000;
   httpServer.listen(
-  {
-    port: PORT,
-    host: "0.0.0.0",
-  },
-  () => {
-    console.log(`🚀 Server running at http://0.0.0.0:${PORT}`);
-  }
+  { port: Number(PORT), host: "0.0.0.0" },
+  () => console.log(`🚀 Server running at http://0.0.0.0:${PORT}`)
 );
 
 })();
