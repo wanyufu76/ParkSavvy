@@ -404,28 +404,39 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/favorites", requireAuth, async (req, res) => {
-    try {
-      const userId = req.user?.id;
-      if (!userId) {
-        return res.status(400).json({ message: "User not found" });
-      }
-      
-      const validatedData = insertUserFavoriteSchema.parse({
-        ...req.body,
-        userId: userId,
-      });
-      
-      const favorite = await storage.addUserFavorite(validatedData);
-      res.status(201).json(favorite);
-    } catch (error) {
-      if (error instanceof z.ZodError) {
-        return res.status(400).json({ message: "Invalid data", errors: error.errors });
-      }
-      console.error("Error adding favorite:", error);
-      res.status(500).json({ message: "Failed to add favorite" });
+ app.post("/api/favorites", requireAuth, async (req, res) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) {
+      return res.status(400).json({ message: "User not found" });
     }
-  });
+
+    const validatedData = insertUserFavoriteSchema.parse({
+      ...req.body,
+      userId: userId,
+    });
+
+    // ✅ 檢查是否已經收藏過
+    const existingFavorites = await storage.getUserFavorites(userId);
+    const alreadyExists = existingFavorites.some(
+      (fav: any) => fav.parkingSpotId === validatedData.parkingSpotId
+    );
+    if (alreadyExists) {
+      return res.status(400).json({ message: "已經收藏過該停車位" });
+    }
+
+    const favorite = await storage.addUserFavorite(validatedData);
+    res.status(201).json(favorite);
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return res
+        .status(400)
+        .json({ message: "Invalid data", errors: error.errors });
+    }
+    console.error("Error adding favorite:", error);
+    res.status(500).json({ message: "Failed to add favorite" });
+  }
+});
 
   app.delete("/api/favorites/:parkingSpotId", requireAuth, async (req, res) => {
     try {

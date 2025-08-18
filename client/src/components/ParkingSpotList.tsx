@@ -22,35 +22,69 @@ interface ParkingSpotListProps {
   onSpotClick?: (spot: ParkingSpot) => void;
 }
 
-export default function ParkingSpotList({ parkingSpots, filters, onSpotClick }: ParkingSpotListProps) {
+export default function ParkingSpotList({
+  parkingSpots,
+  filters,
+  onSpotClick,
+}: ParkingSpotListProps) {
   const { toast } = useToast();
   const { isAuthenticated } = useAuth();
 
   const addFavoriteMutation = useMutation({
     mutationFn: async (parkingSpotId: number) => {
-      await apiRequest("POST", "/api/favorites", { parkingSpotId });
+      const res = await apiRequest("POST", "/api/favorites", { parkingSpotId });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.message || "加入最愛失敗");
+      }
+      return res.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/favorites"] });
       toast({ title: "已加入最愛", description: "已成功加入我的最愛" });
     },
-    onError: (error) => {
+    onError: (error: any) => {
       if (isUnauthorizedError(error)) {
-        toast({ title: "需要登入", description: "請先登入以使用此功能", variant: "destructive" });
-        setTimeout(() => { window.location.href = "/api/login"; }, 1000);
+        toast({
+          title: "需要登入",
+          description: "請先登入以使用此功能",
+          variant: "destructive",
+        });
+        setTimeout(() => {
+          window.location.href = "/api/login";
+        }, 1000);
         return;
       }
-      toast({ title: "加入失敗", description: "請稍後再試", variant: "destructive" });
+
+      // ✅ 這裡改成固定訊息
+      if (error.message?.includes("已經收藏過該停車位")) {
+        toast({
+          title: "收藏失敗",
+          description: "此停車位已經在我的最愛中",
+        });
+      } else {
+        toast({
+          title: "加入失敗",
+          description: "請稍後再試",
+          variant: "destructive",
+        });
+      }
     },
   });
 
   const calculateDistance = (spot: ParkingSpot) => {
-    const lat1 = 25.0133, lng1 = 121.5406;
-    const lat2 = parseFloat(spot.latitude), lng2 = parseFloat(spot.longitude);
+    const lat1 = 25.0133,
+      lng1 = 121.5406;
+    const lat2 = parseFloat(spot.latitude),
+      lng2 = parseFloat(spot.longitude);
     const R = 6371000;
-    const dLat = (lat2 - lat1) * Math.PI / 180;
-    const dLng = (lng2 - lng1) * Math.PI / 180;
-    const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLng / 2) ** 2;
+    const dLat = ((lat2 - lat1) * Math.PI) / 180;
+    const dLng = ((lng2 - lng1) * Math.PI) / 180;
+    const a =
+      Math.sin(dLat / 2) ** 2 +
+      Math.cos((lat1 * Math.PI) / 180) *
+        Math.cos((lat2 * Math.PI) / 180) *
+        Math.sin(dLng / 2) ** 2;
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
     return Math.round(R * c);
   };
@@ -63,26 +97,38 @@ export default function ParkingSpotList({ parkingSpots, filters, onSpotClick }: 
         const price = spot.pricePerHour ?? 30;
 
         if (distance > filters.distanceRange[1]) return false;
-        if (price < filters.priceRange[0] || price > filters.priceRange[1]) return false;
+        if (price < filters.priceRange[0] || price > filters.priceRange[1])
+          return false;
 
         return true;
       })
       .sort((a, b) => {
-        if (filters.sortBy === "distance") return calculateDistance(a) - calculateDistance(b);
+        if (filters.sortBy === "distance")
+          return calculateDistance(a) - calculateDistance(b);
         if (filters.sortBy === "recent") return b.id - a.id;
         return 0;
       });
   }, [parkingSpots, filters]);
 
   const handleNavigation = (spot: ParkingSpot) => {
-    const lat = parseFloat(spot.latitude), lng = parseFloat(spot.longitude);
-    window.open(`https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`, "_blank");
+    const lat = parseFloat(spot.latitude),
+      lng = parseFloat(spot.longitude);
+    window.open(
+      `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`,
+      "_blank"
+    );
   };
 
   const handleAddToFavorites = (spot: ParkingSpot) => {
     if (!isAuthenticated) {
-      toast({ title: "需要登入", description: "請先登入使用此功能", variant: "destructive" });
-      setTimeout(() => { window.location.href = "/api/login"; }, 1000);
+      toast({
+        title: "需要登入",
+        description: "請先登入使用此功能",
+        variant: "destructive",
+      });
+      setTimeout(() => {
+        window.location.href = "/api/login";
+      }, 1000);
       return;
     }
     addFavoriteMutation.mutate(spot.id);
@@ -94,7 +140,9 @@ export default function ParkingSpotList({ parkingSpots, filters, onSpotClick }: 
         <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
           <Car className="h-8 w-8 text-gray-400" />
         </div>
-        <h3 className="text-lg font-medium text-gray-900 mb-2">找不到符合條件的停車位</h3>
+        <h3 className="text-lg font-medium text-gray-900 mb-2">
+          找不到符合條件的停車位
+        </h3>
         <p className="text-gray-600">請調整篩選條件或搜尋範圍</p>
       </div>
     );
@@ -118,11 +166,16 @@ export default function ParkingSpotList({ parkingSpots, filters, onSpotClick }: 
           const price = spot.pricePerHour ?? 30;
 
           return (
-            <Card key={spot.id} className="hover:shadow-md transition-shadow duration-200 cursor-pointer">
+            <Card
+              key={spot.id}
+              className="hover:shadow-md transition-shadow duration-200 cursor-pointer"
+            >
               <CardContent className="p-6">
                 <div className="flex justify-between items-start mb-4">
                   <div className="flex-1">
-                    <h4 className="font-semibold text-lg text-gray-900 mb-1">{spot.name}</h4>
+                    <h4 className="font-semibold text-lg text-gray-900 mb-1">
+                      {spot.name}
+                    </h4>
                     <div className="flex items-center text-gray-600 text-sm mb-2">
                       <MapPin className="h-3 w-3 mr-1" />
                       {spot.address}
@@ -146,7 +199,9 @@ export default function ParkingSpotList({ parkingSpots, filters, onSpotClick }: 
 
                 <div className="text-sm mb-4">
                   <div className="text-gray-500">費率</div>
-                  <div className="font-semibold text-gray-900">NT${price} / 小時</div>
+                  <div className="font-semibold text-gray-900">
+                    NT${price} / 小時
+                  </div>
                 </div>
 
                 <div className="flex gap-2">
