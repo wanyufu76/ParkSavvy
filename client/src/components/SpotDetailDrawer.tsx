@@ -13,18 +13,17 @@ export default function SpotDetailDrawer({ spot, onClose }: Props) {
   const queryClient = useQueryClient();
   const [uploadedSpots, setUploadedSpots] = useState<string[]>([]);
 
-  // ✅ 撈子車格資料
-const { data: subSpots = [] } = useQuery({
-  queryKey: ["/api/parking-sub-spots", spot?.id],
-  queryFn: async () => {
-    if (!spot) return [];
-    const res = await fetch(`/api/parking-sub-spots?spotId=${spot.id}`);
-    if (!res.ok) throw new Error("無法載入子停車格");
-    return res.json();
-  },
-  enabled: !!spot, // spot 存在時才查詢
-});
-
+  // 撈子車格資料
+  const { data: subSpots = [] } = useQuery({
+    queryKey: ["/api/parking-sub-spots", spot?.id],
+    queryFn: async () => {
+      if (!spot) return [];
+      const res = await fetch(`/api/parking-sub-spots?spotId=${spot.id}`);
+      if (!res.ok) throw new Error("無法載入子停車格");
+      return res.json();
+    },
+    enabled: !!spot,
+  });
 
   useEffect(() => {
     fetch("/api/uploads")
@@ -47,13 +46,12 @@ const { data: subSpots = [] } = useQuery({
         body: JSON.stringify({ action }),
       });
 
-      if (!res.ok) return false; // 積分不足或其他錯誤
+      if (!res.ok) return false;
       const data = await res.json();
       if (data.success === true) {
         queryClient.invalidateQueries({ queryKey: ["/api/points"] });
         return true;
       }
-
       return false;
     } catch {
       return false;
@@ -69,8 +67,6 @@ const { data: subSpots = [] } = useQuery({
     const processedUrl = `/processed_images/${id}_output.jpg`;
     const baseUrl = `/base_images/base_${id}.jpg`;
 
-    // 新增：先檢查 processed_images 是否有檔案
-    // 8/11新加（processed都先備份好了，base_images基本作廢)
     try {
       const res = await fetch(processedUrl, { method: "HEAD" });
       if (res.ok) {
@@ -78,79 +74,94 @@ const { data: subSpots = [] } = useQuery({
         return;
       }
     } catch {
-      // 忽略錯誤，走原本的判斷
+      // ignore
     }
-    
+
     const useProcessed = uploadedSpots.includes(location);
     const imageUrl = useProcessed ? processedUrl : baseUrl;
     window.open(imageUrl, "_blank");
   };
 
-    return (
-  <div
-    className="
-      fixed z-50 bg-white shadow-lg border
-      left-1/2 top-4 -translate-x-1/2
-      w-[95%] max-h-[60vh] rounded-lg
-      overflow-y-auto
-      sm:top-20 sm:right-4 sm:inset-auto sm:w-[400px] sm:max-h-[70vh]
-    "
-  >
-    <div className="flex justify-between items-start sticky top-0 bg-white p-4 z-10">
-      <h3 className="text-lg font-semibold">{spot.name}</h3>
-      <Button variant="ghost" size="icon" onClick={onClose}>
-        <X className="h-5 w-5" />
-      </Button>
-    </div>
+  return (
+    <div
+      className="
+        fixed z-50 bg-white shadow-lg border
+        right-2 top-4
+        w-[320px] max-h-[56vh] rounded-lg
+        overflow-y-auto
+        sm:top-20 sm:right-4 sm:w-[400px] sm:max-h-[70vh]
+      "
+    >
+      {/* Header */}
+      <div className="flex justify-between items-start sticky top-0 bg-white p-4 z-10">
+        <h3 className="text-lg font-semibold">{spot.name}</h3>
+        <Button variant="ghost" size="icon" onClick={onClose}>
+          <X className="h-5 w-5" />
+        </Button>
+      </div>
 
-    <div className="px-4 pb-4 flex flex-col gap-2">
-      <p className="text-sm text-muted-foreground">{spot.address}</p>
-      <p>NT$ {spot.pricePerHour || 20} / 小時</p>
+      {/* Body */}
+      <div className="px-4 pb-4 flex flex-col gap-2">
+        <p className="text-sm text-muted-foreground truncate">{spot.address}</p>
 
-      {/* 導航按鈕 */}
-      <Button
-        className="w-full"
-        onClick={async () => {
-          const ok = await handlePointUsage("navigation");
-          if (ok) {
-            window.open(
-              `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`,
-              "_blank"
-            );
-          } else {
-            alert("積分不足，無法使用導航功能");
-          }
-        }}
-      >
-        <NavigationIcon className="h-4 w-4 mr-1" />
-        導航
-      </Button>
+        {/* 價格 + 導航（並列於同一行） */}
+        <div className="flex items-center justify-between gap-3 mt-1">
+          <p className="text-sm">NT$ {spot.pricePerHour || 20} / 小時</p>
 
-      <div className="mt-4 space-y-2">
-        {subSpots.map((ps: any) => (
           <Button
-            key={ps.id}
-            variant="outline"
-            className="w-full"
+            className="px-3 py-1 text-sm w-auto"
             onClick={async () => {
-              const ok = await handlePointUsage("streetview");
-              if (ok) {
-                handleOpenImage(ps.label, ps.label);
-              } else {
-                alert("積分不足，無法查看街景");
+              const url = `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`;
+              const newWin = window.open(url, "_blank");
+              const ok = await handlePointUsage("navigation");
+              if (!ok && newWin) {
+                try {
+                  newWin.close();
+                } catch {}
+                alert("積分不足，無法使用導航功能");
               }
             }}
           >
-            查看街景：{ps.label}
+            <NavigationIcon className="h-4 w-4 mr-1" />
+            導航
           </Button>
-        ))}
-        {subSpots.length === 0 && (
-          <p className="text-sm text-muted-foreground text-center">
-            無子停車格資料
-          </p>
-        )}
+        </div>
+
+        {/* 街景按鈕群：手機小按鈕橫向滾動，桌機維持縱向 full-width（透過 sm:class） */}
+        <div className="mt-3">
+          <div className="flex gap-2 overflow-x-auto sm:flex-col sm:overflow-x-visible">
+            {subSpots.map((ps: any) => (
+              <Button
+                key={ps.id}
+                variant="outline"
+                className="px-2 py-1 text-xs w-auto flex-shrink-0 sm:w-full"
+                onClick={async () => {
+                  // 先 open 再檢查：保持既有行為（不改導向邏輯）
+                  const url = `/processed_images/${ps.label}_output.jpg`;
+                  const newWin = window.open(url, "_blank");
+                  const ok = await handlePointUsage("streetview");
+                  if (!ok && newWin) {
+                    try {
+                      newWin.close();
+                    } catch {}
+                    alert("積分不足，無法查看街景");
+                    return;
+                  }
+                  // 若有足夠積分，newWin 會顯示該 url（或瀏覽器會顯示 404，如果檔案不存在會在 server 判斷）
+                }}
+              >
+                街景：{ps.label}
+              </Button>
+            ))}
+
+            {subSpots.length === 0 && (
+              <p className="text-sm text-muted-foreground text-center w-full">
+                無子停車格資料
+              </p>
+            )}
+          </div>
+        </div>
       </div>
     </div>
-  </div>
-);
+  );
 }
