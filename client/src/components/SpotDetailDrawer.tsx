@@ -86,74 +86,71 @@ const { data: subSpots = [] } = useQuery({
     window.open(imageUrl, "_blank");
   };
 
-  return (
-    <div
-      className="
-        fixed bg-white shadow-lg border rounded-lg z-50 p-5 space-y-4
-        overflow-y-auto max-h-[70vh]
-        top-20 right-4
-        w-[85%] max-w-sm
-        md:w-[400px]
-      "
-    >
-      <div className="flex justify-between items-start">
-        <h3 className="text-lg font-semibold">{spot.name}</h3>
-        <Button variant="ghost" size="icon" onClick={onClose}>
-          <X className="h-5 w-5" />
-        </Button>
-      </div>
+    return (
+  <div
+    className="
+      fixed z-50 bg-white shadow-lg border
+      left-1/2 top-4 -translate-x-1/2
+      w-[95%] max-h-[60vh] rounded-lg
+      overflow-y-auto
+      sm:top-20 sm:right-4 sm:inset-auto sm:w-[400px] sm:max-h-[70vh]
+    "
+  >
+    <div className="flex justify-between items-start sticky top-0 bg-white p-4 z-10">
+      <h3 className="text-lg font-semibold">{spot.name}</h3>
+      <Button variant="ghost" size="icon" onClick={onClose}>
+        <X className="h-5 w-5" />
+      </Button>
+    </div>
 
+    <div className="px-4 pb-4 flex flex-col gap-2">
       <p className="text-sm text-muted-foreground">{spot.address}</p>
       <p>NT$ {spot.pricePerHour || 20} / 小時</p>
 
-      {/* 導航按鈕（主停車場） */}
-      <div className="grid gap-2">
-        <Button
-          className="w-full"
-          onClick={async () => {
-            // 先向後端請求扣點
-            const ok = await handlePointUsage("navigation");
-
-            // 如果扣點成功才開導航
-            if (ok) {
-              window.open(
-                `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`,
-                "_blank"
-              );
-            } else {
-              alert("積分不足，無法使用導航功能");
-            }
-          }}
-        >
-          <NavigationIcon className="h-4 w-4 mr-1" />
-          導航
-        </Button>
-      </div>
+      {/* 導航按鈕 */}
+      <Button
+        className="w-full"
+        onClick={async () => {
+          const ok = await handlePointUsage("navigation");
+          if (ok) {
+            window.open(
+              `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`,
+              "_blank"
+            );
+          } else {
+            alert("積分不足，無法使用導航功能");
+          }
+        }}
+      >
+        <NavigationIcon className="h-4 w-4 mr-1" />
+        導航
+      </Button>
 
       <div className="mt-4 space-y-2">
-      {subSpots.map((ps: any) => (
-        <Button
-          key={ps.id}
-          variant="outline"
-          className="w-full"
-          onClick={async () => {
-            const ok = await handlePointUsage("streetview");
-            if (ok) {
-              handleOpenImage(ps.label, ps.label); // ps.label 就是 A01, B02...
-            } else {
-              alert("積分不足，無法查看街景");
-            }
-          }}
-        >
-          查看街景：{ps.label}
-        </Button>
-      ))}
-      {subSpots.length === 0 && (
-        <p className="text-sm text-muted-foreground text-center">
-          無子停車格資料
-        </p>
-      )}
+        {subSpots.map((ps: any) => (
+          <Button
+            key={ps.id}
+            variant="outline"
+            className="w-full"
+            onClick={async () => {
+              const ok = await handlePointUsage("streetview");
+              if (ok) {
+                handleOpenImage(ps.label, ps.label);
+              } else {
+                alert("積分不足，無法查看街景");
+              }
+            }}
+          >
+            查看街景：{ps.label}
+          </Button>
+        ))}
+        {subSpots.length === 0 && (
+          <p className="text-sm text-muted-foreground text-center">
+            無子停車格資料
+          </p>
+        )}
+      </div>
     </div>
-        </div>
-  );
+  </div>
+);
 }
