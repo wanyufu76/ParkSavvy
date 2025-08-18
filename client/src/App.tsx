@@ -17,6 +17,7 @@ import AuthPage from "@/pages/auth-page";
 import ParkingAdmin from "@/pages/ParkingAdmin";
 import AdminLogin from "@/pages/AdminLogin";
 import AdminDashboard from "@/pages/AdminDashboard";
+import Profile from "@/pages/Profile";
 
 // ✅ 專門處理 /admin redirect
 function AdminRedirect() {
@@ -54,6 +55,7 @@ function Router() {
           <Route path="/favorites" component={Landing} />
           <Route path="/upload" component={Landing} />
           <Route path="/contact" component={Landing} />
+          <Route path="/profile" component={Landing} />
           <Route component={Landing} />
         </>
       ) : (
@@ -63,6 +65,7 @@ function Router() {
           <Route path="/upload" component={Upload} />
           <Route path="/contact" component={Contact} />
           <Route path="/shared-videos" component={SharedVideos} />
+          <Route path="/profile" component={Profile} />
           <Route component={NotFound} />
         </>
       )}

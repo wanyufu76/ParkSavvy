@@ -12,9 +12,8 @@ import {
   Mail,
   LogOut,
   Settings,
-  Shield,   // ✅ 新增一個 icon (管理員)
+  Shield,
 } from "lucide-react";
-import ProfileDialog from "@/components/ProfileDialog";
 
 /* ---------- 宣告使用者型別 ---------- */
 interface AuthUser {
@@ -32,8 +31,7 @@ export default function Navigation() {
   const { isAuthenticated, user } = useAuth();
 
   /* ---------- 使用者顯示名稱 ---------- */
-  const u = user as AuthUser; // <- cast 一下
-
+  const u = user as AuthUser;
   const displayName =
     [
       u?.username,
@@ -109,16 +107,18 @@ export default function Navigation() {
                     </Link>
                   )}
 
-                  <ProfileDialog>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="ml-2 px-3 py-2 rounded-md text-sm font-medium transition-colors duration-200 flex items-center text-gray-700 hover:text-primary"
-                    >
-                      <Settings className="h-4 w-4 mr-1" />
-                      個人設定
-                    </Button>
-                  </ProfileDialog>
+                  {/* ✅ 改成 Profile 頁面 */}
+                  <Link
+                    href="/profile"
+                    className={`px-3 py-2 rounded-md text-sm font-medium transition-colors duration-200 flex items-center ${
+                      location === "/profile"
+                        ? "text-primary font-semibold"
+                        : "text-gray-700 hover:text-primary"
+                    }`}
+                  >
+                    <Settings className="h-4 w-4 mr-1" />
+                    個人設定
+                  </Link>
 
                   {/* 使用者名稱 */}
                   {displayName && (
@@ -194,9 +194,9 @@ export default function Navigation() {
                 {/* ✅ 手機版 admin 按鈕 */}
                 {u?.role === "admin" && (
                   <Link
-                    href="/admin"
+                    href="/admin/login"
                     className={`block px-3 py-2 text-base font-medium transition-colors duration-200 flex items-center ${
-                      location === "//admin/login"
+                      location === "/admin/login"
                         ? "text-primary font-semibold"
                         : "text-gray-700 hover:text-primary"
                     }`}
@@ -207,16 +207,19 @@ export default function Navigation() {
                   </Link>
                 )}
 
-                <ProfileDialog>
-                  <Button
-                    variant="ghost"
-                    className="w-full mt-2 justify-start px-3 py-2 text-base font-medium transition-colors duration-200 flex items-center text-gray-700 hover:text-primary"
-                    onClick={() => setIsMobileMenuOpen(false)}
-                  >
-                    <Settings className="h-4 w-4 mr-2" />
-                    個人設定
-                  </Button>
-                </ProfileDialog>
+                {/* ✅ 手機版 Profile 頁面 */}
+                <Link
+                  href="/profile"
+                  className={`block px-3 py-2 text-base font-medium transition-colors duration-200 flex items-center ${
+                    location === "/profile"
+                      ? "text-primary font-semibold"
+                      : "text-gray-700 hover:text-primary"
+                  }`}
+                  onClick={() => setIsMobileMenuOpen(false)}
+                >
+                  <Settings className="h-4 w-4 mr-2" />
+                  個人設定
+                </Link>
 
                 {/* 使用者名稱 (mobile) */}
                 {displayName && (

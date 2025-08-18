@@ -10,6 +10,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
+import { Settings, Bell, Lock, User, Home } from "lucide-react";
 
 const changePasswordSchema = z.object({
   currentPassword: z.string().min(1, "請輸入當前密碼"),
@@ -22,10 +23,31 @@ const changePasswordSchema = z.object({
 
 type ChangePasswordData = z.infer<typeof changePasswordSchema>;
 
+interface Notification {
+  id: number;
+  title?: string;
+  message: string;
+  isRead: boolean;
+  createdAt: string;
+}
+
+interface PointHistoryEntry {
+  id: string;
+  type: "upload" | "use";
+  change: number;
+  description: string;
+}
+
+interface PointsData {
+  currentPoints: number;
+  history: PointHistoryEntry[];
+}
+
 export default function Profile() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [showPasswordForm, setShowPasswordForm] = useState(false);
+  const [visibleCount, setVisibleCount] = useState(5);
 
   const form = useForm<ChangePasswordData>({
     resolver: zodResolver(changePasswordSchema),
@@ -36,15 +58,24 @@ export default function Profile() {
     },
   });
 
-  // 獲取通知
-  const { data: notifications = [] } = useQuery({
+  // 通知
+  const { data: notifications = [] } = useQuery<Notification[]>({
     queryKey: ["/api/notifications"],
   });
 
-  // 密碼修改mutation
+  // 積分
+  const { data: points } = useQuery<PointsData>({
+    queryKey: ["/api/points"],
+  });
+
+  // 修改密碼
   const changePasswordMutation = useMutation({
     mutationFn: async (data: ChangePasswordData) => {
       const response = await apiRequest("POST", "/api/change-password", data);
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}));
+        throw new Error(err.message || "更新失敗");
+      }
       return response.json();
     },
     onSuccess: () => {
@@ -64,7 +95,7 @@ export default function Profile() {
     },
   });
 
-  // 標記通知為已讀
+  // 標記通知已讀
   const markAsReadMutation = useMutation({
     mutationFn: async (notificationId: number) => {
       await apiRequest("PATCH", `/api/notifications/${notificationId}/read`);
@@ -74,20 +105,119 @@ export default function Profile() {
     },
   });
 
+  // 全部標記已讀
+  const markAllAsReadMutation = useMutation({
+    mutationFn: async () => {
+      await apiRequest("PATCH", "/api/notifications/mark-all-read");
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/notifications"] });
+      toast({
+        title: "已讀取所有通知",
+        description: "所有通知已標記為已讀",
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "錯誤",
+        description: error.message || "標記失敗",
+        variant: "destructive",
+      });
+    },
+  });
+
   const onSubmit = (data: ChangePasswordData) => {
     changePasswordMutation.mutate(data);
   };
 
-  const unreadCount = (notifications as any[])?.filter((n: any) => !n.isRead)?.length || 0;
+  const unreadCount = Array.isArray(notifications)
+    ? notifications.filter((n) => !n.isRead).length
+    : 0;
 
   return (
-    <div className="container mx-auto px-4 py-8 space-y-6">
-      <h1 className="text-3xl font-bold">個人資料</h1>
+    <div className="container mx-auto px-4 py-8 space-y-6 max-w-2xl">
+      {/* 標題 + 返回首頁 */}
+      <div className="flex items-center justify-between">
+        <h1 className="text-3xl font-bold flex items-center gap-2 text-[hsl(186,83%,35%)]">
+          <User className="h-7 w-7 text-[hsl(186,83%,35%)]" />
+          個人資料
+        </h1>
+        <Button
+          variant="outline"
+          className="flex items-center gap-2"
+          onClick={() => window.history.back()} // ← 如果是 queryParams，就改 setPage("home")
+        >
+          <Home className="h-5 w-5" />
+          返回首頁
+        </Button>
+      </div>
 
-      {/* 密碼修改區塊 */}
+      {/* 積分區塊 */}
       <Card>
         <CardHeader>
-          <CardTitle>帳號安全</CardTitle>
+          <CardTitle className="flex items-center gap-2">
+            <Settings className="h-5 w-5 text-[hsl(186,83%,35%)]" />
+            積分資訊
+          </CardTitle>
+          <CardDescription>
+            查看您目前的積分狀態與最近活動
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="text-lg font-semibold">
+            剩餘積分：{points?.currentPoints ?? "載入中..."} 點
+          </div>
+          <div className="space-y-2 max-h-40 overflow-y-auto text-sm">
+            {Array.isArray(points?.history) && points.history.length > 0 ? (
+              <>
+                {points.history.slice(0, visibleCount).map((entry, index) => (
+                  <div
+                    key={entry.id}
+                    className="flex justify-between items-center border-b pb-1"
+                  >
+                    <span>
+                      {index === 0 && "最新一筆異動："}
+                      {entry.type === "upload" && "上傳圖片"}
+                      {entry.type === "use" && (
+                        entry.description === "點擊地圖使用功能" ? "使用地圖功能" :
+                        entry.description === "使用導航功能" ? "使用導航功能" :
+                        entry.description === "使用街景功能" ? "使用街景功能" :
+                        "使用其他功能"
+                      )}
+                    </span>
+                    <span
+                      className={`font-medium ${
+                        entry.change >= 0 ? "text-green-600" : "text-red-600"
+                      }`}
+                    >
+                      {entry.change > 0 ? `+${entry.change}` : entry.change} 點
+                    </span>
+                  </div>
+                ))}
+                {visibleCount < points.history.length && (
+                  <Button
+                    variant="outline"
+                    className="w-full mt-2 text-[hsl(186,83%,35%)] border-[hsl(186,83%,35%)]"
+                    onClick={() => setVisibleCount(visibleCount + 5)}
+                  >
+                    查看更多
+                  </Button>
+                )}
+              </>
+            ) : (
+              <p className="text-muted-foreground">暫無紀錄</p>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* 密碼修改 */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Lock className="h-5 w-5 text-[hsl(186,83%,35%)]" />
+            帳號安全
+          </CardTitle>
           <CardDescription>修改您的登入密碼</CardDescription>
         </CardHeader>
         <CardContent>
@@ -151,10 +281,11 @@ export default function Profile() {
         </CardContent>
       </Card>
 
-      {/* 系統通知區塊 */}
+      {/* 通知 */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
+            <Bell className="h-5 w-5 text-[hsl(186,83%,35%)]" />
             系統通知
             {unreadCount > 0 && (
               <Badge variant="destructive">{unreadCount} 未讀</Badge>
@@ -162,40 +293,52 @@ export default function Profile() {
           </CardTitle>
           <CardDescription>查看系統回覆和重要通知</CardDescription>
         </CardHeader>
-        <CardContent>
-          {(notifications as any[])?.length === 0 ? (
-            <p className="text-gray-500">暫無通知</p>
-          ) : (
-            <div className="space-y-3">
-              {(notifications as any[])?.map((notification: any) => (
+        <CardContent className="space-y-4">
+          {Array.isArray(notifications) && notifications.length > 0 && (
+            <Button
+              variant="outline"
+              onClick={() => markAllAsReadMutation.mutate()}
+            >
+              全部標記已讀
+            </Button>
+          )}
+          <div className="space-y-3 max-h-60 overflow-y-auto">
+            {!Array.isArray(notifications) || notifications.length === 0 ? (
+              <p className="text-muted-foreground text-center py-4">
+                暫無通知
+              </p>
+            ) : (
+              notifications.map((notification) => (
                 <div
                   key={notification.id}
-                  className={`p-4 border rounded-lg ${
-                    notification.isRead ? "bg-gray-50" : "bg-blue-50 border-blue-200"
+                  className={`p-3 rounded-lg border ${
+                    notification.isRead
+                      ? "bg-muted/50"
+                      : "bg-blue-50 border-blue-200"
                   }`}
                 >
-                  <div className="flex justify-between items-start">
-                    <div>
-                      <h4 className="font-semibold">{notification.title}</h4>
-                      <p className="text-sm text-gray-600 mt-1">{notification.message}</p>
-                      <p className="text-xs text-gray-400 mt-2">
-                        {new Date(notification.createdAt).toLocaleString()}
+                  <div className="flex justify-between items-start gap-2">
+                    <div className="flex-1">
+                      <h4 className="font-medium">{notification.title}</h4>
+                      <p className="text-sm text-muted-foreground mt-1">
+                        {notification.message}
                       </p>
                     </div>
                     {!notification.isRead && (
                       <Button
                         size="sm"
-                        variant="outline"
+                        variant="ghost"
                         onClick={() => markAsReadMutation.mutate(notification.id)}
+                        disabled={markAsReadMutation.isPending}
                       >
                         標記已讀
                       </Button>
                     )}
                   </div>
                 </div>
-              ))}
-            </div>
-          )}
+              ))
+            )}
+          </div>
         </CardContent>
       </Card>
     </div>
