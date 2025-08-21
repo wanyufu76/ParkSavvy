@@ -9,6 +9,7 @@ import {
   integer,
   decimal,
   boolean,
+  date,
 } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
@@ -24,6 +25,11 @@ export const sessions = pgTable(
   },
   (table) => [index("IDX_session_expire").on(table.expire)],
 );
+
+export const visit_logs = pgTable("visit_logs", {
+  date: date("date").primaryKey(),
+  count: integer("count").default(0),
+});
 
 // User storage table for custom authentication
 export const users = pgTable("users", {

@@ -19,9 +19,10 @@ import { processImage } from "./processImage.js";
 import { createClient } from "@supabase/supabase-js";
 import "dotenv/config";
 import { db } from "./db.js";  // ✅ 匯入 db
-import { parkingSubSpots } from "../shared/schema.js"; // 匯入 schema
+import { parkingSubSpots,visit_logs } from "../shared/schema.js"; // 匯入 schema
 import { eq } from "drizzle-orm";
 import { getParkingHints } from "./parkingHints.js"; 
+import { sql } from "drizzle-orm";
 
 /* --------------------------------------------------
  *  Multer – local uploads (images / videos up to 500 MB)
@@ -110,6 +111,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
     res.redirect(`https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`);
   });
+
+  // 新增記錄人次的 API
+  app.get("/api/visits/today", async (req, res) => {
+  const today = new Date().toISOString().split("T")[0];
+  const result = await db.execute(sql`
+    SELECT count FROM visit_logs WHERE date = ${today}
+  `);
+  res.json({ count: result.rows[0]?.count ?? 0 });
+  console.log("查詢結果", result.rows);
+});
 
   app.get("/api/auth/google/callback", async (req, res) => {
     try {
@@ -242,14 +253,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Log user in
-      (req as any).login(user, (err: any) => {
-        if (err) {
-          console.error("Login session error:", err);
-          return res.redirect("/?error=login_failed");
+      (req as any).login(user, async (err: any) => {
+      if (err) {
+        console.error("Login session error:", err);
+        return res.redirect("/?error=login_failed");
+      }
+
+      // ✅ 更新 visit_logs
+      try {
+        const today = new Date().toISOString().slice(0, 10);
+        const existing = await storage.getVisitLog(today);
+        if (!existing) {
+          await storage.insertVisitLog(today, 1);
+        } else {
+          await storage.updateVisitLog(today, existing.count + 1);
         }
-        console.log("Google OAuth login successful for user:", user.email);
-        res.redirect('/?login=success');
-      });
+        console.log("✅ 訪客紀錄已更新");
+      } catch (e) {
+        console.error("❌ 訪客紀錄更新失敗", e);
+      }
+
+      console.log("Google OAuth login successful for user:", user.email);
+      res.redirect('/?login=success');
+    });
 
     } catch (error) {
       console.error("Google OAuth error:", error);
@@ -315,12 +341,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Log user in
-      (req as any).login(user, (err: any) => {
-        if (err) {
-          return res.status(500).json({ message: "Login failed" });
+      (req as any).login(user, async (err: any) => {
+      if (err) {
+        return res.status(500).json({ message: "Login failed" });
+      }
+
+      // ✅ 更新 visit_logs
+      try {
+        const today = new Date().toISOString().slice(0, 10);
+        const existing = await storage.getVisitLog(today);
+        if (!existing) {
+          await storage.insertVisitLog(today, 1);
+        } else {
+          await storage.updateVisitLog(today, existing.count + 1);
         }
-        res.redirect('/');
-      });
+        console.log("✅ 訪客紀錄已更新");
+      } catch (e) {
+        console.error("❌ 訪客紀錄更新失敗", e);
+      }
+
+      res.redirect('/');
+    });
 
     } catch (error) {
       console.error("GitHub OAuth error:", error);

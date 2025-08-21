@@ -16,10 +16,11 @@ import {
 } from "@/components/ui/tabs";
 import { RefreshCw, Map, List } from "lucide-react";
 import type { ParkingSpot } from "@shared/schema";
-import { apiRequest } from "@/lib/queryClient";
 
 export default function Home() {
   const { toast } = useToast();
+
+  // ✅ 撈停車點資料
   const {
     data: parkingSpots = [],
     isLoading,
@@ -28,6 +29,23 @@ export default function Home() {
     queryKey: ["/api/parking-spots"],
   });
 
+  // ✅ 撈今日使用人次
+ const {
+  data: visitCount = 0,
+  refetch: refetchVisits,
+} = useQuery<number>({
+  queryKey: ["/api/visits/today"],
+  queryFn: async () => {
+    const res = await fetch("/api/visits/today", {
+      cache: "no-store",
+    });
+    if (!res.ok) throw new Error("無法取得人次資料");
+    const data = await res.json();
+    return data.count ?? 0;
+  },
+});
+
+  // ✅ 登入成功就記一筆人次紀錄
   useEffect(() => {
     const p = new URLSearchParams(location.search);
     const loginOK = p.get("login") === "success";
@@ -35,6 +53,10 @@ export default function Home() {
 
     if (loginOK) {
       toast({ title: "登入成功", description: "歡迎使用智慧停車！" });
+
+      fetch("/api/visit-logs/increment", { method: "POST" }).then(() =>
+        refetchVisits()
+      );
     } else if (err) {
       const dict: Record<string, string> = {
         login_failed: "登入失敗，請重試",
@@ -47,17 +69,20 @@ export default function Home() {
         variant: "destructive",
       });
     }
+
     if (loginOK || err) history.replaceState({}, "", "/");
-  }, [toast]);
+  }, [toast, refetchVisits]);
 
   const [activeTab, setActiveTab] = useState<"map" | "list">("map");
-  const [selectedSpot, setSelectedSpot] = useState<(ParkingSpot & { subSpots?: any[] }) | null>(null);
+  const [selectedSpot, setSelectedSpot] = useState<
+    (ParkingSpot & { subSpots?: any[] }) | null
+  >(null);
   const [filters, setFilters] = useState({
-  searchTerm: "",
-  distanceRange: [0, 99999999],
-  priceRange: [10, 9999999],
-  sortBy: "distance",
-});
+    searchTerm: "",
+    distanceRange: [0, 99999999],
+    priceRange: [10, 9999999],
+    sortBy: "distance",
+  });
 
   const handleClearFilters = () =>
     setFilters({
@@ -78,8 +103,11 @@ export default function Home() {
 
       <section className="bg-gradient-to-r from-primary to-secondary text-white py-12 text-center">
         <h2 className="text-4xl font-bold mb-3">智慧停車位檢測系統</h2>
-        <p className="text-lg text-cyan-100 mb-6">
+        <p className="text-lg text-cyan-100 mb-2">
           透過 AI 即時掌握台科大周邊停車位狀況
+        </p>
+        <p className="text-sm text-white/90 mt-2">
+          今日使用人次：<span className="font-bold text-white">{visitCount}</span>
         </p>
       </section>
 
@@ -109,7 +137,9 @@ export default function Home() {
                 disabled={isLoading}
               >
                 <RefreshCw
-                  className={`h-3 w-3 mr-1 ${isLoading ? "animate-spin" : ""}`}
+                  className={`h-3 w-3 mr-1 ${
+                    isLoading ? "animate-spin" : ""
+                  }`}
                 />
                 更新
               </Button>

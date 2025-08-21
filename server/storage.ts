@@ -6,6 +6,7 @@ import {
   contactMessages,
   admins,
   userNotifications,
+  visit_logs,
   type User,
   type InsertUser,
   type ParkingSpot,
@@ -26,6 +27,11 @@ import { eq, and, desc } from "drizzle-orm";
 
 // Interface for storage operations
 export interface IStorage {
+  //使用人次統計方法
+  getVisitLog(date: string): Promise<{ date: string; count: number } | null>;
+  insertVisitLog(date: string, count: number): Promise<void>;
+  updateVisitLog(date: string, count: number): Promise<void>;
+
   // User operations for custom authentication
   getUser(id: number): Promise<User | undefined>;
   getUserByUsername(username: string): Promise<User | undefined>;
@@ -75,7 +81,30 @@ export interface IStorage {
   markAllNotificationsAsRead(userId: number): Promise<void>;
 }
 
+// storage.ts
 export class DatabaseStorage implements IStorage {
+  // ✅ 取得今日訪客記錄
+  async getVisitLog(date: string): Promise<{ date: string; count: number } | null> {
+    const result = await db.query.visit_logs.findFirst({
+      where: (log, { eq }) => eq(log.date, date),
+    });
+    if (!result) return null;
+    return { date: result.date, count: result.count ?? 0 };
+  }
+
+  // ✅ 新增今日訪客記錄
+  async insertVisitLog(date: string, count: number): Promise<void> {
+    await db.insert(visit_logs).values({ date, count });
+  }
+
+  // ✅ 更新今日訪客記錄
+  async updateVisitLog(date: string, newCount: number): Promise<void> {
+    await db
+      .update(visit_logs)
+      .set({ count: newCount })
+      .where(eq(visit_logs.date, date));
+  }
+
   // User operations for custom authentication
   async getUser(id: number): Promise<User | undefined> {
     const [user] = await db.select().from(users).where(eq(users.id, id));

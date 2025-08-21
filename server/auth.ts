@@ -134,10 +134,29 @@ export function setupAuth(app: Express) {
   });
 
   /* 登入 */
-  app.post("/api/login", passport.authenticate("local"), (req, res) => {
-    const { password: _pw, ...safeUser } = req.user!;
-    res.status(200).json(safeUser);  // safeUser 裡面會包含 role
-  });
+  app.post("/api/login", passport.authenticate("local"), async (req, res) => {
+  const { password: _pw, ...safeUser } = req.user!;
+  const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+
+  try {
+    const existing = await storage.getVisitLog(today);
+    console.log("[DEBUG] getVisitLog 回傳：", existing);
+
+    if (!existing) {
+      await storage.insertVisitLog(today, 1);
+      console.log("[DEBUG] insertVisitLog 完成");
+    } else {
+      await storage.updateVisitLog(today, existing.count + 1);
+      console.log("[DEBUG] updateVisitLog 完成");
+    }
+
+    console.log("[LOG] 訪客紀錄更新完成");
+  } catch (e) {
+    console.error("更新訪客數錯誤", e);
+  }
+
+  res.status(200).json(safeUser);
+});
 
   /* 登出 */
   app.post("/api/logout", (req, res, next) => {
