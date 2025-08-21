@@ -1,10 +1,18 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef ,useState} from "react";
 import { io } from "socket.io-client";
 import type { ParkingSpot } from "@shared/schema";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { getAvailabilityMap, buildGroupAvailability, pickGroupMarkerMetaWithHalfRule } from "../../../server/availability";
 const socket = io();
 import { smoothZoomSteps } from "@/lib/smoothZoom";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
 
 interface Props {
   onSpotClick?: (spot: ParkingSpot & { subSpots: SubSpot[] }) => void;
@@ -19,6 +27,8 @@ interface SubSpot {
 
 export default function MapWithSpots({ onSpotClick }: Props) {
   const mapRef = useRef<HTMLDivElement>(null);
+  const [showInsufficientPointsDialog, setShowInsufficientPointsDialog] = useState(false);
+  const [insufficientMessage, setInsufficientMessage] = useState("❌ 積分不足，請上傳影像來獲得積分。");
 
   useEffect(() => {
     const scriptId = "gmaps-api";
@@ -47,6 +57,7 @@ export default function MapWithSpots({ onSpotClick }: Props) {
     mapTypeControl: false,
     scaleControl: true,
     zoomControl: true,
+    gestureHandling: "greedy", // 單指拖曳
   });
   (window as any).dbgMap = map;   // ← 只在開發環境加
 
@@ -737,13 +748,13 @@ export default function MapWithSpots({ onSpotClick }: Props) {
     marker.addListener("click", async () => {
     if (!isZoomed) {
       console.log("🔍 Zoom in 中...");
-      // ✅ ✅ ✅ 立即 zoom + 置中，不等扣分
+      // 立即 zoom + 置中，不等扣分
       smoothZoomSteps(map, 21, 200);
       map.setCenter(mapping.point);
       isZoomed = true;
 
       try {
-        // ✅ 接著再去扣分
+        // 接著再去扣分
         const res = await fetch("/api/points/use", {
           method: "POST",
           credentials: "include",
@@ -753,10 +764,10 @@ export default function MapWithSpots({ onSpotClick }: Props) {
 
         const data = await res.json();
         if (!(res.ok && data.success === true)) {
-          alert(data.message || "❌ 積分不足，無法使用地圖功能");
-          isZoomed = false;
-          return;
-        }
+        setInsufficientMessage("請上傳影像來獲取積分\n積分使用詳情可至個人設定頁面中查看");
+        setShowInsufficientPointsDialog(true);
+        return;
+      }
 
         console.log(`✅ 已扣 ${data.cost || 10} 積分，剩餘 ${data.updatedPoints}`);
         queryClient.invalidateQueries({ queryKey: ["/api/points"] });
@@ -899,5 +910,23 @@ export default function MapWithSpots({ onSpotClick }: Props) {
 };
 
 
-  return <div ref={mapRef} className="w-full h-full" />;
+  return (
+  <>
+    <div ref={mapRef} className="w-full h-full" />
+
+    <Dialog open={showInsufficientPointsDialog} onOpenChange={setShowInsufficientPointsDialog}>
+      <DialogContent className="w-[90vw] sm:max-w-[400px] p-4 rounded-2xl">
+        <DialogHeader>
+          <DialogTitle>積分不足</DialogTitle>
+          <DialogDescription className="whitespace-pre-line">
+            {insufficientMessage}
+          </DialogDescription>
+        </DialogHeader>
+        <div className="flex justify-center pt-4">
+          <Button onClick={() => setShowInsufficientPointsDialog(false)}>關閉</Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  </>
+);
 }
