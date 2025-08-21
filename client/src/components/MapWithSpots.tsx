@@ -4,6 +4,7 @@ import type { ParkingSpot } from "@shared/schema";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { getAvailabilityMap, buildGroupAvailability, pickGroupMarkerMetaWithHalfRule } from "../../../server/availability";
 const socket = io();
+import { smoothZoomSteps } from "@/lib/smoothZoom";
 
 interface Props {
   onSpotClick?: (spot: ParkingSpot & { subSpots: SubSpot[] }) => void;
@@ -734,31 +735,31 @@ export default function MapWithSpots({ onSpotClick }: Props) {
     console.log(`🅿️ P 點 marker 建立: ${mapping.spotName}`);
 
     marker.addListener("click", async () => {
-      if (!isZoomed) {
-        // 先嘗試扣分
-        try {
-          const res = await fetch("/api/points/use", {
-            method: "POST",
-            credentials: "include",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ action: "map" }), // 地圖使用扣分
-          });
+    if (!isZoomed) {
+      console.log("🔍 Zoom in 中...");
+      // ✅ ✅ ✅ 立即 zoom + 置中，不等扣分
+      smoothZoomSteps(map, 21, 200);
+      map.setCenter(mapping.point);
+      isZoomed = true;
 
-          const data = await res.json();
+      try {
+        // ✅ 接著再去扣分
+        const res = await fetch("/api/points/use", {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "map" }),
+        });
 
-          if (!(res.ok && data.success === true)) {
+        const data = await res.json();
+        if (!(res.ok && data.success === true)) {
           alert(data.message || "❌ 積分不足，無法使用地圖功能");
-          return; // ❌ 扣分失敗 → 不放大、不畫格子、不畫紅點
+          isZoomed = false;
+          return;
         }
 
         console.log(`✅ 已扣 ${data.cost || 10} 積分，剩餘 ${data.updatedPoints}`);
         queryClient.invalidateQueries({ queryKey: ["/api/points"] });
-
-        // 扣分成功才執行以下內容
-        console.log("🔍 Zoom in 中...");
-        map.setZoom(21);
-        map.setCenter(mapping.point);
-
 
         const subSpots: SubSpot[] = [];
 
