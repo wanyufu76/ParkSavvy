@@ -90,7 +90,7 @@ export default function Landing() {
                 <span className="text-2xl font-bold text-white">1</span>
               </div>
               <h4 className="text-xl font-semibold text-gray-900 mb-2">點擊登入</h4>
-              <p className="text-gray-600">點選「登入」按鈕進入Replit驗證頁面</p>
+              <p className="text-gray-600">點選「登入」按鈕進入驗證頁面</p>
             </div>
             <div className="text-center">
               <div className="w-16 h-16 bg-secondary rounded-full flex items-center justify-center mx-auto mb-4">

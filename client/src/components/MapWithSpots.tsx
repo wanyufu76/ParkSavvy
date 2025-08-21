@@ -910,23 +910,46 @@ export default function MapWithSpots({ onSpotClick }: Props) {
 };
 
 
-  return (
-  <>
+ return (
+  <div className="relative w-full h-full">
     <div ref={mapRef} className="w-full h-full" />
 
+    {/* 積分不足對話框 */}
     <Dialog open={showInsufficientPointsDialog} onOpenChange={setShowInsufficientPointsDialog}>
-      <DialogContent className="w-[90vw] sm:max-w-[400px] p-4 rounded-2xl">
+      <DialogContent className="sm:max-w-[400px] rounded-xl">
         <DialogHeader>
           <DialogTitle>積分不足</DialogTitle>
           <DialogDescription className="whitespace-pre-line">
             {insufficientMessage}
           </DialogDescription>
         </DialogHeader>
-        <div className="flex justify-center pt-4">
+        <div className="flex justify-center pt-2">
           <Button onClick={() => setShowInsufficientPointsDialog(false)}>關閉</Button>
         </div>
       </DialogContent>
     </Dialog>
-  </>
+
+    {/* ✅ P 點顏色圖例：左上角 + 蒂芬妮綠 */}
+    <div
+      className="absolute top-4 left-4 bg-white bg-opacity-90 rounded-xl shadow-lg p-3 text-sm space-y-1"
+      style={{ zIndex: 999 }}
+    >
+      <div>
+        <span
+          className="inline-block w-3 h-3 rounded-full mr-2"
+          style={{ backgroundColor: "#30D5C8" }} // 蒂芬妮綠
+        />
+        空位（&gt; 50%）
+      </div>
+      <div>
+        <span className="inline-block w-3 h-3 rounded-full bg-yellow-400 mr-2" />
+        有限（&lt; 50%）
+      </div>
+      <div>
+        <span className="inline-block w-3 h-3 rounded-full bg-red-500 mr-2" />
+        充足（0%）
+      </div>
+    </div>
+  </div>
 );
 }
