@@ -97,22 +97,30 @@ def run_detection_and_draw(img_path: str, base_cfg_dir: str, ocr_json_path: str)
     # 6. 組 result list
     results = []
     for idx, (x_px, y_px) in enumerate(px_pos):
-        cx, cy = m_cent[matches[idx][0]]
+        mot_idx, plate_idx = matches[idx]
+        cx, cy = m_cent[mot_idx]
+        px, py = p_cent[plate_idx]
+
         best_txt, best_d = "未知", float("inf")
         for e in ocr_data:
             ex, ey = e["center"]
-            d = np.hypot(ex - cx, ey - cy)
+            d = np.hypot(ex - px, ey - py)   # ⬅️ 注意：是 plate 框中心 px/py 去找 ocr 的點
             if d < best_d and e["conf"] > 0.7:
-                best_d, best_txt = d, e["text"]
+                best_d = d
+                best_txt = e["text"]
+
+        # ✅ motor_uid 生成（車牌 + 中心點組成唯一 ID）
+        motor_uid = f"{best_txt}#{int(cx)}#{int(cy)}"
 
         results.append(
             dict(
                 motor_index=idx,
-                real_x=x_px,          # ← 像素
-                real_y=y_px,          # ← 像素
+                real_x=x_px,
+                real_y=y_px,
                 plate_text=best_txt,
                 match_distance=best_d,
                 location=loc_tag,
+                motor_uid=motor_uid,   # ✅ 加入這行
             )
         )
 

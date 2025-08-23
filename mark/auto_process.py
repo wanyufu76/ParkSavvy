@@ -1,4 +1,5 @@
 import os
+import re
 import json
 import shutil
 import subprocess
@@ -153,6 +154,27 @@ def upsert_current_count(area_id: str, count: int, src_id: str | None = None):
         on_conflict="area_id"              # ← 這裡也改
     ).execute()
 
+def extract_group_from_rect_name(name: str) -> str:
+    """
+    從子格名抓英文字母開頭，例如 'C01' -> 'C'、'H' -> 'H'
+    """
+    if not name:
+        return ""
+    m = re.match(r"^[A-Za-z]+", name.strip())
+    return m.group(0).upper() if m else ""
+
+def extract_group_from_location(loc: str) -> str:
+    if not loc:
+        return ""
+    s = loc.strip()
+    # 先抓「開頭的英文字母」（C01 → C、H02 → H）
+    m = re.match(r"[A-Za-z]+", s)
+    if m:
+        return m.group(0).upper()
+    # 抓結尾的英文字母（…停車格D → D）
+    m = re.search(r"([A-Za-z]+)$", s)
+    return m.group(1).upper() if m else ""
+
 # ----------------- JSON 產出 -----------------
 def generate_json_for_location(location):
     """產生前端可用 JSON，紅點沿中心線整齊化，含經緯度"""
@@ -206,7 +228,9 @@ def generate_json_for_location(location):
     ], dtype=float)
     box_points = reorder_box_points(box_points)
 
-    # 過濾並整理紅點
+    default_group = extract_group_from_location(location)
+
+    # ✅ 過濾並整理紅點（保證 points 與 markers 一一對應）
     points = []
     markers = []
     for item in records:
@@ -214,13 +238,18 @@ def generate_json_for_location(location):
         y_px = item.get("real_y")
         if x_px is None or y_px is None:
             continue
-        if not isinstance(x_px, (int,float)) or not isinstance(y_px, (int,float)):
+        if not isinstance(x_px, (int, float)) or not isinstance(y_px, (int, float)):
             continue
 
-        points.append([x_px, y_px])
         lat, lng = pixel_to_latlng(x_px, y_px, cfg)
         if lat is None or lng is None:
-            continue
+            continue  # 這筆不進 markers → 也不要進 points
+
+        rect_name = item.get("rect_name") or item.get("subspot") or item.get("grid_name") or ""
+        group_key = extract_group_from_rect_name(rect_name) or default_group  # ← ★ 關鍵
+
+        # 只有確定會建 marker 時才把點同步加入 points，確保長度一致
+        points.append([x_px, y_px])
 
         markers.append({
             "motor_index": item["motor_index"],
@@ -231,21 +260,29 @@ def generate_json_for_location(location):
             "lng": lng,
             "location": location,
             "image_filename": item["image_filename"],
+            # ⭐ 分區名字（給前端用名字過濾）
+            "group_key": group_key,
+            # （可選）同義欄位，避免前端欄位名不一致
+            "spot_group": group_key,
         })
 
-    # 紅點沿中心線整齊化
+    # ✅ 紅點沿中心線整齊化（用 zip 對齊，永遠不越界）
     if points:
         aligned_pts = align_points_to_centerline(np.array(points, dtype=float), box_points)
-        for i, p in enumerate(aligned_pts):
-            x, y = p
+
+        # 以 zip 對齊，避免 IndexError
+        for m, (x, y) in zip(markers, aligned_pts):
+            x = float(x); y = float(y)
             lat, lng = pixel_to_latlng(x, y, cfg)
-            markers[i]["pixel_x"] = int(x)
-            markers[i]["pixel_y"] = int(y)
-            markers[i]["lat"] = lat
-            markers[i]["lng"] = lng
+            m["pixel_x"] = int(x)
+            m["pixel_y"] = int(y)
+            if lat is not None and lng is not None:
+                m["lat"] = lat
+                m["lng"] = lng
 
     latest_count = len(markers)
     upsert_current_count(location, latest_count, src_id=latest_filename)
+
     # 輸出 JSON
     out = f"map_output_{location}.json"
     with open(out, "w", encoding="utf-8") as f:
