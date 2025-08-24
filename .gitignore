@@ -14,4 +14,4 @@ render.yaml
 *.log
 .vscode/
 Thumbs.db
-
+map_outputs/

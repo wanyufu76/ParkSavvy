@@ -152,17 +152,21 @@ def upload_motor_records(result_path, area_key, filename):
     else:
         print(" 沒有配對資料可上傳")
 
-def upsert_current_count(area_id: str, count: int, src_id: str | None = None):
+def upsert_current_count(route_key: str, area_id: str, count: int, src_id: str | None = None):
+    """把最新數量寫進 current_status（複合主鍵 route_key+area_id）"""
     payload = {
-        "area_id": area_id,                # ← 改這裡
+        "route_key": (route_key or "").lower(),  # "ib" / "tr"
+        "area_id": area_id,                      # "A01" / "B02"（不要有前綴）
         "scooter_count": int(count),
         "ts": datetime.now().isoformat(),
         "src_id": src_id or "",
     }
+    # on_conflict 記得是複合鍵
     supabase.table("current_status").upsert(
         payload,
-        on_conflict="area_id"              # ← 這裡也改
+        on_conflict="route_key,area_id"
     ).execute()
+
 
 def extract_group_from_rect_name(name: str) -> str:
     """
@@ -337,15 +341,23 @@ def generate_json_for_location(inferred_area: str):
             if lat is not None and lng is not None:
                 m["lat"] = lat; m["lng"] = lng
 
-    # 7) 狀態表：用 route+area 當主鍵
+    # 7) 狀態表：用 route_key + area_id 當主鍵
     latest_count = len(markers)
-    upsert_current_count(f"{route_key}_{area_id}", latest_count, src_id=latest_filename)
-
+    if route_key and area_id:
+        upsert_current_count(route_key, area_id, latest_count, src_id=latest_filename)
+        print(f"🟢 current_status 更新：({route_key}, {area_id}) = {latest_count}")
+    else:
+        print(f"⚠️ 未更新：inferred_area='{inferred_area}' 無法解析到 route_key/area_id")
+        
     # 8) 輸出 JSON（檔名也用 route+area）
-    out = f"map_output_{route_key}_{area_id}.json"
-    with open(out, "w", encoding="utf-8") as f:
+    out_dir = Path("map_outputs")
+    out_dir.mkdir(exist_ok=True)  # 沒有資料夾就自動建立
+    out_path = out_dir / f"map_output_{route_key}_{area_id}.json"
+
+    with open(out_path, "w", encoding="utf-8") as f:
         json.dump(markers, f, ensure_ascii=False, indent=2)
-    print(f" {route_key}_{area_id}: 已輸出 {out} (含經緯度，沿中心線整齊化)")
+
+    print(f" {route_key}_{area_id}: 已輸出 {out_path} (含經緯度，沿中心線整齊化)")
 
 def resolve_base_config_dir(inferred_area_value: str) -> str:
     """

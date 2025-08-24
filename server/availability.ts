@@ -71,7 +71,8 @@ export function parseGroupKey(areaId: string): string {
   return prefixMaybe ? `${prefixMaybe}_${letter}` : letter;               // "IB_A" / "A"
 }
 
-// 依 boxMappings + routeMapping 自動生成 groupMap：{ "IB_A": ["A01","A02",...], ... }
+// 依 boxMappings + routeMapping 產生 groupMap：
+// 例如 { "IB_A": ["IB_A01","IB_A02","IB_A03"], "TR_B": ["TR_B01", ...] }
 export function deriveGroupMapFromBoxMappings(
   boxMappings: Array<{ spotName: string; rects?: Array<{ name: string }> }>,
   routeMapping: Record<string, string>
@@ -79,21 +80,23 @@ export function deriveGroupMapFromBoxMappings(
   const groupMap: Record<string, string[]> = {};
 
   for (const m of boxMappings) {
-    // 1) 找路線代碼（IB/TR…）：用 spotName 的前綴對照
+    // 依 spotName 找路線代碼（IB/TR…）
     const prefix =
-      Object.entries(routeMapping).find(([k]) => m.spotName.startsWith(k))?.[1] ?? "";
+      Object.entries(routeMapping).find(([k]) => m.spotName.startsWith(k))?.[1] ?? ""; // "IB" | "TR" | ""
 
-    if (!m.rects || m.rects.length === 0) continue;
+    if (!m.rects?.length) continue;
 
     for (const r of m.rects) {
       const letter = r.name.match(/^[A-Za-z]+/)?.[0]?.toUpperCase() ?? ""; // A/B/C…
-      const areaId = r.name;                                              // A01/B02…
-      const groupKey = prefix ? `${prefix}_${letter}` : letter;           // IB_A / TR_B / A
+      const bareId = r.name.toUpperCase();                                  // "A01"
+      const fullId = prefix ? `${prefix}_${bareId}` : bareId;                // "IB_A01" or "A01"
+      const groupKey = prefix ? `${prefix}_${letter}` : letter;              // "IB_A" or "A"
 
       if (!groupMap[groupKey]) groupMap[groupKey] = [];
-      if (!groupMap[groupKey].includes(areaId)) groupMap[groupKey].push(areaId);
+      if (!groupMap[groupKey].includes(fullId)) groupMap[groupKey].push(fullId);
     }
   }
+
   return groupMap;
 }
 
