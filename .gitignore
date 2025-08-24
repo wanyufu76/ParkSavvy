@@ -15,3 +15,5 @@ render.yaml
 .vscode/
 Thumbs.db
 map_outputs/
+/mark/__pycache__/
+/mark/base_config/
