@@ -1,5 +1,5 @@
 import cv2, json, os, sys, numpy as np
-import base64
+import base64, re
 from scipy.optimize import linear_sum_assignment
 import io
 from ultralytics import YOLO
@@ -17,12 +17,18 @@ def decode_npy_b64(b64_str):
     raw = base64.b64decode(b64_str)
     return np.load(io.BytesIO(raw))
 
-def get_base_config(location):
-    """從 base_configs 撈對應的 Homography 與底圖資訊"""
-    res = supabase.table("base_configs").select("*").eq("area_id", location).limit(1).execute()
+def get_base_config(area_id: str, route_key: str | None):
+    """
+    從 base_configs 撈對應的 Homography 與底圖資訊
+    - 優先用 (route_key, area_id)；route_key 為空則只用 area_id（向下相容）
+    """
+    q = supabase.table("base_configs").select("*").eq("area_id", area_id)
+    if route_key:
+        q = q.eq("route_key", route_key)
+    res = q.limit(1).execute()
     if not res.data:
-        raise ValueError(f"找不到 {location} 對應的 base_config")
-    
+        raise ValueError(f"找不到 base_config：area_id={area_id}, route_key={route_key or '(none)'}")
+
     cfg = res.data[0]
 
     # decode H_base
@@ -35,23 +41,38 @@ def get_base_config(location):
     W = cfg.get("img_width")
     H_img = cfg.get("img_height")
     if not W or not H_img:
-        # 如果資料庫沒存就讀實際圖
         base_img_b64 = cfg.get("base_image_b64")
         if base_img_b64:
             img_arr = np.frombuffer(base64.b64decode(base_img_b64), dtype=np.uint8)
             img = cv2.imdecode(img_arr, cv2.IMREAD_COLOR)
             H_img, W = img.shape[:2]
         else:
-            raise ValueError(f"{location} 沒有 img_width/img_height，且無法讀底圖")
-
+            raise ValueError(f"{area_id} 沒有 img_width/img_height，且無法讀底圖")
     return H_base, W, H_img
 
-def run_detection_and_draw(img_path: str, base_cfg_dir: str, ocr_json_path: str):
-    # location
-    loc_tag = os.path.basename(base_cfg_dir).replace("base_config_", "")
+def parse_base_cfg_dir(base_cfg_dir: str):
+    """
+    從資料夾名稱解析 route 與 area：
+      base_config_IB_A01 -> ('IB', 'A01')
+      base_config_TR_C02 -> ('TR', 'C02')
+      base_config_A01    -> (None, 'A01')  # 舊版仍可用
+    """
+    name = os.path.basename(base_cfg_dir)
+    m = re.match(r"^base_config_(?:([A-Za-z]+)_)?([A-Za-z]+\d+)$", name)
+    if not m:
+        # 保底：沿用舊邏輯把 prefix 去掉
+        area_only = name.replace("base_config_", "")
+        return None, area_only
+    route = m.group(1).upper() if m.group(1) else None
+    area  = m.group(2).upper()
+    return route, area
 
-    # 1. 從 DB 取 H 與底圖大小
-    H, W, H_img = get_base_config(loc_tag)
+def run_detection_and_draw(img_path: str, base_cfg_dir: str, ocr_json_path: str):
+    # 解析 base_cfg_dir => route_key / area_id
+    route_key, area_id = parse_base_cfg_dir(base_cfg_dir)
+
+    # 1. 從 DB 取 H 與底圖大小（雙鍵 or 單鍵）
+    H, W, H_img = get_base_config(area_id, route_key)
 
     # 2. YOLO 偵測
     img = cv2.imread(img_path)
@@ -78,59 +99,59 @@ def run_detection_and_draw(img_path: str, base_cfg_dir: str, ocr_json_path: str)
 
     # 4. 投影 + 像素換算
     def norm_to_px(xn: float, yn: float):
-        x = (xn + 1) / 2 * W           # -1 → 0 , +1 → W
-        y = (1 - yn) / 2 * H_img       # +1 → 0 , -1 → H_img
+        x = (xn + 1) / 2 * W
+        y = (1 - yn) / 2 * H_img
         return float(x), float(y)
 
     px_pos = []
     for i,_ in matches:
         cx, cy = m_cent[i]
-        xn, yn = cv2.perspectiveTransform(
-            np.array([[[cx, cy]]], dtype=np.float32), H
-        )[0, 0]
+        xn, yn = cv2.perspectiveTransform(np.array([[[cx, cy]]], dtype=np.float32), H)[0, 0]
         x_px, y_px = norm_to_px(xn, yn)
         px_pos.append((x_px, y_px))
 
     # 5. 讀 OCR
     ocr_data = json.load(open(ocr_json_path, encoding="utf-8"))
 
-    # 6. 組 result list
+    # 6. 組 result list（避免 Infinity）
     results = []
     for idx, (x_px, y_px) in enumerate(px_pos):
         mot_idx, plate_idx = matches[idx]
         cx, cy = m_cent[mot_idx]
         px, py = p_cent[plate_idx]
 
-        best_txt, best_d = "未知", float("inf")
+        best_txt, best_d = "未知", None
         for e in ocr_data:
             ex, ey = e["center"]
-            d = np.hypot(ex - px, ey - py)   # ⬅️ 注意：是 plate 框中心 px/py 去找 ocr 的點
-            if d < best_d and e["conf"] > 0.7:
-                best_d = d
-                best_txt = e["text"]
+            d = np.hypot(ex - px, ey - py)
+            if e.get("conf", 0) > 0.7:
+                if best_d is None or d < best_d:
+                    best_d = d
+                    best_txt = e.get("text", best_txt)
 
-        # ✅ motor_uid 生成（車牌 + 中心點組成唯一 ID）
+        # motor_uid
         motor_uid = f"{best_txt}#{int(cx)}#{int(cy)}"
 
-        results.append(
-            dict(
-                motor_index=idx,
-                real_x=x_px,
-                real_y=y_px,
-                plate_text=best_txt,
-                match_distance=best_d,
-                location=loc_tag,
-                motor_uid=motor_uid,   # ✅ 加入這行
-            )
-        )
+        results.append(dict(
+            motor_index=idx,
+            real_x=x_px,
+            real_y=y_px,
+            plate_text=best_txt,
+            match_distance=best_d,   # None 或數值
+            location=area_id,        # 舊欄位：純區代號（例如 A01）
+            route_key=route_key,     # 新增：IB / TR（可能為 None）
+            motor_uid=motor_uid,
+        ))
 
-    # 7. 輸出 JSON
+    # 7. 輸出 JSON（禁止 NaN/Inf）
     out_path = img_path + "_result.json"
-    json.dump(results, open(out_path, "w", encoding="utf-8"), ensure_ascii=False, indent=2)
+    json.dump(results, open(out_path, "w", encoding="utf-8"),
+              ensure_ascii=False, indent=2, allow_nan=False)
     print(f"✅ 產生 {out_path}  ({len(results)} 筆)")
 
 # ------------ CLI ------------
 if __name__ == "__main__":
+    # 仍然只收 3 個參數（跟你原本一樣）
     if len(sys.argv) != 3 and len(sys.argv) != 4:
         print("用法: python based_mark.py <image> <base_config_dir> <ocr_json>")
         sys.exit(1)

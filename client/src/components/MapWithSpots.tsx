@@ -804,75 +804,57 @@ export default function MapWithSpots({ onSpotClick }: Props) {
           });
         }
 
+
         // ✅ 此時才畫紅點
         // 進入 zoom-in 後，先清掉之前的紅點（防殘留）
         redPointMarkers.forEach((m) => m.setMap(null));
         redPointMarkers = [];
 
-        // 取得這次被點的大區 key：例如 "H01" -> "H"
-        const firstSub = mapping.rects?.[0]?.name ?? "";
-        const groupKey = firstSub.match(/^[A-Za-z]+/)?.[0] ?? "";
+        // 1) 直接用你現成 helper 算這顆 P 的群組鍵：e.g. "IB_H" / "TR_A" / "H"
+        const groupKey = getGroupKeyForMapping(mapping, routeMapping); // 例："IB_H"
+        const norm = (s:any)=> (s??"").toString().trim().toUpperCase();
 
-        // 如果 rects 真的沒有字母（保險備援：從 spotName 尾巴抓 A-Z）
-        const fallbackFromSpot = mapping.spotName?.match(/([A-Za-z]+)$/)?.[1] ?? "";
+        // 2) 拉紅點資料
+        const redRes = await fetch("/api/red-points");
+        const redPoints = await redRes.json();
 
-        // ✅ 統一大小寫與空白
-        const norm = (s: any) => (s ?? "").toString().trim().toUpperCase();
-        const finalGroupKey = norm(groupKey || fallbackFromSpot);
+        // 3) 用 location 直接過濾（location 形如 "IB_H01"）
+        //    重點：只要開頭符合 "IB_H" 就是同一路線同一字母區
+        const expectedPrefix = norm(groupKey); // "IB_H" 或 "H"
+        const filtered = Array.isArray(redPoints)
+          ? redPoints.filter((pt:any) => {
+              const loc = norm(pt.location || pt.inferred_area || "");
+              // 支援舊資料：如果 groupKey 沒帶路線只比對字母
+              return expectedPrefix.includes("_")
+                ? loc.startsWith(expectedPrefix + "")  // "IB_H01".startsWith("IB_H")
+                : loc.split("_")[1]?.startsWith(expectedPrefix); // "IB_H01" -> "H01"
+            })
+          : [];
 
-        try {
-          const redRes = await fetch("/api/red-points");
-          const redPoints = await redRes.json();
+        console.log(`🔴 ${expectedPrefix} 區紅點筆數:`, filtered.length);
 
-          // ✅ 只用名字欄位過濾；多給幾個常見欄位名以防資料鍵不同
-          const pickGroup = (pt: any) => {
-            const byName =
-              pt.group_key ??
-              pt.spot_group ??
-              pt.group ??
-              pt.groupKey ??
-              pt.area ??
-              pt.inferred_area ??
-              "";
-
-            if (byName) return norm(byName);
-
-            // ← 新增：如果前面都沒有，就用 location/spotName 的開頭英文字母
-            const loc = pt.location ?? pt.spotName ?? "";
-            const m = norm(loc).match(/^[A-Z]+/);  // "C01" -> "C"
-            return m ? m[0] : "";
-          };
-
-          const filtered = Array.isArray(redPoints)
-            ? redPoints.filter((pt: any) => pickGroup(pt) === finalGroupKey)
-            : [];
-
-          console.log(`🔴 ${finalGroupKey} 區紅點筆數:`, filtered.length);
-
-          for (const pt of filtered) {
-            const redMarker = new g.maps.Marker({
-              position: { lat: pt.lat, lng: pt.lng },
-              map,
-              icon: {
-                path: g.maps.SymbolPath.CIRCLE,
-                scale: 7.5,
-                fillColor: "red",
-                fillOpacity: 1,
-                strokeColor: "white",
-                strokeOpacity: 0.8,
-                strokeWeight: 2,
-              },
-              label: {
-                text: pt.motor_index?.toString() ?? "",
-                color: "white",
-                fontSize: "12px",
-                fontWeight: "bold",
-              },
-            });
-            redPointMarkers.push(redMarker);
-          }
-        } catch (e) {
-          console.warn("⚠️ 紅點載入失敗:", e);
+        // 4) 畫點（原樣）
+        for (const pt of filtered) {
+          const redMarker = new g.maps.Marker({
+            position: { lat: pt.lat, lng: pt.lng },
+            map,
+            icon: {
+              path: g.maps.SymbolPath.CIRCLE,
+              scale: 7.5,
+              fillColor: "red",
+              fillOpacity: 1,
+              strokeColor: "white",
+              strokeOpacity: 0.8,
+              strokeWeight: 2,
+            },
+            label: {
+              text: pt.motor_index?.toString() ?? "",
+              color: "white",
+              fontSize: "12px",
+              fontWeight: "bold",
+            },
+          });
+          redPointMarkers.push(redMarker);
         }
 
         isZoomed = true;
