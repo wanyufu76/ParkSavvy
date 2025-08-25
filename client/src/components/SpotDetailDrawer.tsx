@@ -82,6 +82,39 @@ export default function SpotDetailDrawer({ spot, onClose }: Props) {
     window.open(imageUrl, "_blank");
   };
 
+   // 區域對照表（小寫對應資料夾）
+  const routeMapping: Record<string, string> = {
+    "基隆路四段73巷": "ib",
+    "基隆路三段155巷": "tr",
+    "羅斯福路四段113巷": "police",
+    "萊爾富側邊": "hilife",
+    "公館國小側邊": "gges",
+  };
+
+  // 判斷 spotName 對應的區域
+  function getRegionFromSpotName(spotName: string): string {
+    if (!spotName) return "";
+
+    // 嘗試精確比對 key
+    const prefix = Object.keys(routeMapping).find((key) =>
+      spotName.includes(key)   // 用 includes 而不是 startsWith，比較寬鬆
+    );
+
+    if (prefix) {
+      return routeMapping[prefix];
+    }
+
+    // fallback：用數字判斷，避免 key 不完全對上
+    if (spotName.includes("73")) return "ib";
+    if (spotName.includes("155")) return "tr";
+    if (spotName.includes("113")) return "police";
+    if (spotName.includes("萊爾富")) return "hilife";
+    if (spotName.includes("公館國小")) return "gges";
+
+    console.warn("⚠️ 無法判斷區域，spotName =", spotName);
+    return "";
+  }
+
   return (
     <div
       className="
@@ -137,7 +170,8 @@ export default function SpotDetailDrawer({ spot, onClose }: Props) {
                 className="px-2 py-1 text-xs w-auto flex-shrink-0 sm:w-full"
                 onClick={async () => {
                   // 先 open 再檢查：保持既有行為（不改導向邏輯）
-                  const url = `/processed_images/${ps.label}_output.jpg`;
+                  const region = getRegionFromSpotName(spot.name);
+                  const url = `/processed_images/${region}/${ps.label}_output.jpg`;
                   const newWin = window.open(url, "_blank");
                   const ok = await handlePointUsage("streetview");
                   if (!ok && newWin) {
