@@ -61,9 +61,10 @@ export function setupAuth(app: Express) {
     cookie: {
       httpOnly: true,
       secure: isProd,              // 只有佈署 HTTPS 時才設 true
-      maxAge: 7 * 24 * 60 * 60 * 1000, // 1 week
+      maxAge: 10 * 60 * 1000, // 10 min
       sameSite: isProd ? "lax" : "strict",
     },
+    rolling: true, // 每次請求都刷新過期時間
   };
 
   app.set("trust proxy", 1); // 如果有 reverse proxy（e.g. Vercel / Render）
