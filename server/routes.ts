@@ -115,11 +115,35 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // 新增記錄人次的 API
   app.get("/api/visits/today", async (req, res) => {
   const today = new Date().toISOString().split("T")[0];
+
   const result = await db.execute(sql`
-    SELECT count FROM visit_logs WHERE date = ${today}
+    SELECT count, usage_count FROM visit_logs WHERE date = ${today}
   `);
-  res.json({ count: result.rows[0]?.count ?? 0 });
+
+  const row = result.rows[0];
+  res.json({
+    loginCount: row?.count ?? 0,         // 原本的登入人次
+    usageCount: row?.usage_count ?? 0,   // 新增的使用人次（如扣分行為）
+  });
   console.log("查詢結果", result.rows);
+});
+
+// GET /api/visits/total → 回傳累計登入人次與使用人次
+app.get("/api/visits/total", async (req, res) => {
+  const result = await db.execute(sql`
+    SELECT 
+      COALESCE(SUM(count), 0) AS login_total,
+      COALESCE(SUM(usage_count), 0) AS usage_total
+    FROM visit_logs;
+  `);
+
+  console.log("回傳加總結果：", result.rows);  // ✅ 加上這行印出來
+  const row = result.rows[0];
+
+  res.json({
+    loginCount: Number(row?.login_total ?? 0),
+    usageCount: Number(row?.usage_total ?? 0),
+  });
 });
 
   app.get("/api/auth/google/callback", async (req, res) => {
@@ -563,7 +587,8 @@ app.post("/api/uploads", requireAuth, upload.single("file"), async (req, res) =>
         const MARK_DIR = process.env.MARK_DIR || path.resolve(ROOT, "mark");                       // .../ParkSavvy/mark
         const INFER_PATH = process.env.INFER_PATH || path.join(MARK_DIR, "infer_location.py");     // 絕對路徑
         const PROCESSED_IMAGES_DIR = process.env.PROCESSED_IMAGES_DIR || path.resolve(ROOT, "processed_images");
-        const BASE_IMAGES_DIR = process.env.BASE_IMAGES_DIR || path.resolve(ROOT, "base_images");
+        // const BASE_IMAGES_DIR = process.env.BASE_IMAGES_DIR || path.resolve(ROOT, "base_images");
+        const BASE_IMAGES_DIR = process.env.BASE_IMAGES_DIR || ROOT;  //直接重根目錄找
         const SIFT_SCRIPT = process.env.SIFT_SCRIPT || path.join(ROOT, "sift_v1.py");
         const PYTHON = process.env.PYTHON || "python";
 
@@ -574,7 +599,16 @@ app.post("/api/uploads", requireAuth, upload.single("file"), async (req, res) =>
         // 跑 python（不用 conda）
         const runPython = (args: string[], extraEnv: NodeJS.ProcessEnv = {}) =>
           new Promise<{ stdout: string; stderr: string; code: number }>((resolve, reject) => {
-            const env = { ...process.env, ...extraEnv };
+            const env = {
+              ...process.env,
+              ...extraEnv,
+              // ↓↓↓ 限制多執行緒數學庫與 OpenCV，避免一上傳就吃滿全部 CPU
+              OMP_NUM_THREADS: "1",
+              OPENBLAS_NUM_THREADS: "1",
+              MKL_NUM_THREADS: "1",
+              NUMEXPR_NUM_THREADS: "1",
+              OPENCV_OPENCL_RUNTIME: "",
+            };
             const child = spawn(PYTHON, args, { env });
             let stdout = "", stderr = "";
             child.stdout.on("data", (d) => (stdout += d.toString()));
@@ -583,17 +617,19 @@ app.post("/api/uploads", requireAuth, upload.single("file"), async (req, res) =>
             child.on("close", (code) => resolve({ stdout, stderr, code: code ?? -1 }));
           });
 
-        // 1) 推論區位：用 importlib 直接載入 infer_location.py
-        async function inferArea(uploadAbsPath: string): Promise<string> {
-          const pySnippet = [
-  'import importlib.util',
-  `spec = importlib.util.spec_from_file_location("infer_location", r"${INFER_PATH}")`,
-  'mod = importlib.util.module_from_spec(spec)',
-  'spec.loader.exec_module(mod)',
-  `loc = mod.infer_location_clip(r"${uploadAbsPath}", processed_images_dir=r"${PROCESSED_IMAGES_DIR}")`,
-  'print("RESULT:", loc if loc else "")'
-].join('\n');
 
+
+        // 1) 推論區位：用 importlib 直接載入 infer_location.py
+        async function inferArea(uploadAbsPath: string, userLocation: string): Promise<string> {
+          const pySnippet = [
+            'import importlib.util, sys',
+            `spec = importlib.util.spec_from_file_location("infer_location", r"${INFER_PATH}")`,
+            'mod = importlib.util.module_from_spec(spec)',
+            'spec.loader.exec_module(mod)',
+            // ★ 只用新介面：在 {BASE_IMAGES_DIR}/{location}_base_images 底下找
+            `loc = mod.infer_location_clip(r"${uploadAbsPath}", r"${BASE_IMAGES_DIR}", r"${userLocation}")`,
+            'print("RESULT:", loc if loc else "")'
+          ].join('\n');
 
           const { stdout, stderr, code: exitCode } = await runPython(["-c", pySnippet], {
             PYTHONPATH: `${MARK_DIR}:${ROOT}`,
@@ -612,14 +648,32 @@ app.post("/api/uploads", requireAuth, upload.single("file"), async (req, res) =>
           return area;
         }
 
+
+
         // 2) 選底圖：優先 processed_images/<區位>_output.jpg，否則 base_images/base_<區位>.jpg
+        // function pickBase(area: string): string {
+        //   const processed = path.join(PROCESSED_IMAGES_DIR, `${area}_output.jpg`);
+        //   if (fsSync.existsSync(processed)) return processed;
+        //   const base = path.join(BASE_IMAGES_DIR, `base_${area}.jpg`);
+        //   if (fsSync.existsSync(base)) return base;
+        //   throw new Error(`找不到底圖：${processed} 或 ${base}`);
+        // }
         function pickBase(area: string): string {
+          // 先找 {BASE_IMAGES_DIR}/{location}_base_images/{A01}_output.jpg
+          const fromLoc = path.join(BASE_IMAGES_DIR, `${location}_base_images`, `${area}_output.jpg`);
+          if (fsSync.existsSync(fromLoc)) return fromLoc;
+
+          // 再找 processed_images/{A01}_output.jpg（已融合的最新成品）
           const processed = path.join(PROCESSED_IMAGES_DIR, `${area}_output.jpg`);
           if (fsSync.existsSync(processed)) return processed;
-          const base = path.join(BASE_IMAGES_DIR, `base_${area}.jpg`);
-          if (fsSync.existsSync(base)) return base;
-          throw new Error(`找不到底圖：${processed} 或 ${base}`);
+
+          // 最後找 base_{A01}.jpg（舊命名）
+          const legacy = path.join(BASE_IMAGES_DIR, `base_${area}.jpg`);
+          if (fsSync.existsSync(legacy)) return legacy;
+
+          throw new Error(`找不到底圖：\n  ${fromLoc}\n  ${processed}\n  ${legacy}`);
         }
+
 
         // 3) 融合：sift_v1.py base upload output
         async function fuseWithSift(basePath: string, uploadPath: string, outPath: string) {
@@ -636,8 +690,28 @@ app.post("/api/uploads", requireAuth, upload.single("file"), async (req, res) =>
 
         // 取得這次上傳檔的絕對路徑（沿用你上方 rename 後的 newPath）
         const uploadAbsPath = path.resolve(newPath);
-        const inferredArea = await inferArea(uploadAbsPath);
-        const basePath = pickBase(inferredArea);
+        // const inferredArea = await inferArea(uploadAbsPath);
+        // const basePath = pickBase(inferredArea);
+        // 取得純區域代號（A01/B01），記得把使用者選的 location 傳進去
+        const inferredArea = await inferArea(uploadAbsPath, location);
+
+        // ★ 回寫資料庫：inferred_area = "<location>_<A01>"
+        const inferredAreaForDb = `${location}_${inferredArea}`;
+        await supabase.from("image_uploads")
+            .update({ inferred_area: inferredAreaForDb })
+            .eq("id", (upload_record as any).id);
+        // try {
+        //   await supabase.from("image_uploads")
+        //     .update({ inferred_area: inferredAreaForDb })
+        //     .eq("id", (upload_record as any).id);
+        //   console.log("[uploads] 寫入 inferred_area:", inferredAreaForDb);
+        // } catch (e) {
+        //   console.error("[uploads] 寫入 inferred_area 失敗:", e);
+        // }
+
+// 選底圖並融合
+const basePath = pickBase(inferredArea);
+
         const fusedPath = path.join(PROCESSED_IMAGES_DIR, `${inferredArea}_output.jpg`); // 覆蓋更新
 
         await fuseWithSift(basePath, uploadAbsPath, fusedPath);
@@ -1109,53 +1183,59 @@ app.post("/api/uploads", requireAuth, upload.single("file"), async (req, res) =>
 
 
   app.post("/api/points/use", requireAuth, async (req, res) => {
-    const userId = req.user?.id;
-    const { action } = req.body; // 前端傳來：map / navigation / streetview
+  const userId = req.user?.id;
+  const { action } = req.body; // map / navigation / streetview
 
-    // 定義每個動作扣幾分、說明
-    const actionMap: Record<string, { cost: number; description: string }> = {
-      map: { cost: 10, description: "點擊地圖使用功能" },
-      navigation: { cost: 30, description: "使用導航功能" },
-      streetview: { cost: 50, description: "使用街景功能" },
-    };
+  const actionMap: Record<string, { cost: number; description: string }> = {
+    map: { cost: 10, description: "點擊地圖使用功能" },
+    navigation: { cost: 30, description: "使用導航功能" },
+    streetview: { cost: 50, description: "使用街景功能" },
+  };
 
-    if (!action || !actionMap[action]) {
-      return res.status(400).json({ message: "未知的動作類型" });
-    }
+  if (!action || !actionMap[action]) {
+    return res.status(400).json({ message: "未知的動作類型" });
+  }
 
-    const { cost, description } = actionMap[action];
+  const { cost, description } = actionMap[action];
 
-    const { data: user, error } = await supabase
-      .from("users")
-      .select("points")
-      .eq("id", userId)
-      .single();
+  const { data: user, error } = await supabase
+    .from("users")
+    .select("points")
+    .eq("id", userId)
+    .single();
 
-    if (error || !user) return res.status(500).json({ message: "查詢失敗" });
+  if (error || !user) return res.status(500).json({ message: "查詢失敗" });
 
-    if (user.points < cost) {
-      return res.status(400).json({ message: "積分不足，無法使用功能" });
-    }
+  if (user.points < cost) {
+    return res.status(400).json({ message: "積分不足，無法使用功能" });
+  }
 
-    const newPoints = user.points - cost;
+  const newPoints = user.points - cost;
 
-    await supabase
-      .from("users")
-      .update({ points: newPoints })
-      .eq("id", userId);
+  await supabase.from("users").update({ points: newPoints }).eq("id", userId);
 
-    await supabase.from("points_history").insert([
-      {
-        user_id: userId,
-        type: "use",
-        change: -cost,
-        description,
-      },
-    ]);
+  await supabase.from("points_history").insert([
+    {
+      user_id: userId,
+      type: "use",
+      change: -cost,
+      description,
+    },
+  ]);
 
-    res.json({ success: true, updatedPoints: newPoints });
-  });
+  // ✅ 累加使用人次（usage_count）
+  try {
+    console.log("✅ 準備更新 usage_count...");
+    await db.execute(sql`
+      INSERT INTO visit_logs (date, usage_count)
+      VALUES ((CURRENT_DATE AT TIME ZONE 'Asia/Taipei'), 1)
+      ON CONFLICT (date)
+      DO UPDATE SET usage_count = visit_logs.usage_count + 1;
+    `);
+  } catch (err) {
+    console.error("❌ 無法更新 usage_count：", err);
+  }
 
-  const httpServer = createServer(app);
-  return httpServer;
+  res.json({ success: true, updatedPoints: newPoints });
+});
 }
