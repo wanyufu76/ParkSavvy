@@ -28,7 +28,8 @@ export const sessions = pgTable(
 
 export const visit_logs = pgTable("visit_logs", {
   date: date("date").primaryKey(),
-  count: integer("count").default(0),
+  loginCount: integer("count").default(0),
+  usageCount: integer("usage_count").default(0), // ← 新增這欄
 });
 
 // User storage table for custom authentication

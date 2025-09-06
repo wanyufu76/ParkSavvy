@@ -12,13 +12,26 @@ import {
   Map as MapIcon,
 } from "lucide-react";
 import { useLocation } from "wouter";
+import { useQuery } from "@tanstack/react-query";
+import { CountUp } from "use-count-up";
 
 export default function Landing() {
   const [, setLocation] = useLocation();
-  
+
   const handleLogin = () => {
     setLocation("/auth");
   };
+
+  // ✅ 讀取累計登入與使用人次
+  const { data: stats, isLoading } = useQuery({
+    queryKey: ["/api/visits/total"],
+    queryFn: async () => {
+      const res = await fetch("/api/visits/total");
+      if (!res.ok) throw new Error("讀取統計失敗");
+      return res.json() as Promise<{ loginCount: number; usageCount: number }>;
+    },
+    staleTime: 60_000,
+  });
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -66,11 +79,45 @@ export default function Landing() {
             >
               立即開始使用
             </Button>
+
+            {/* ✅ 加入統計顯示 */}
+            {isLoading ? (
+            <p className="text-sm text-cyan-100 mt-4">統計載入中...</p>
+          ) : (
+            <div className="flex justify-center items-center gap-12 mt-6">
+              <div className="text-center text-white">
+                <p className="text-xl font-medium">累計登入人次</p>
+                <p className="text-5xl font-extrabold">
+                  <CountUp
+                    isCounting
+                    end={stats?.loginCount ?? 0}
+                    duration={1}
+                    thousandsSeparator=","
+                  >
+                    {({ value }) => <span>{value}</span>}
+                  </CountUp>
+                </p>
+              </div>
+
+              <div className="text-center text-white">
+                <p className="text-xl font-medium">累計使用功能人次</p>
+                <p className="text-5xl font-extrabold">
+                  <CountUp
+                    isCounting
+                    end={stats?.usageCount ?? 0}
+                    duration={1}
+                    thousandsSeparator=","
+                  >
+                    {({ value }) => <span>{value}</span>}
+                  </CountUp>
+                </p>
+              </div>
+            </div>
+          )}
+
             <div className="text-sm text-cyan-100 max-w-md mx-auto">
               <p className="mb-2">首次使用？點選登入後選擇「註冊新帳戶」</p>
-              <p>• 支援Google、GitHub等多種登入方式</p>
-              <p>• 密碼需至少6個字元</p>
-              <p>• 註冊完成即可立即使用所有功能</p>
+              <p>• 支援Google、GitHub登入</p>
             </div>
           </div>
         </div>
@@ -83,7 +130,7 @@ export default function Landing() {
             <h3 className="text-3xl font-bold text-gray-900 mb-4">如何開始使用？</h3>
             <p className="text-lg text-gray-600">簡單三步驟，立即享受智慧停車服務</p>
           </div>
-          
+
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-12">
             <div className="text-center">
               <div className="w-16 h-16 bg-primary rounded-full flex items-center justify-center mx-auto mb-4">
@@ -107,7 +154,7 @@ export default function Landing() {
               <p className="text-gray-600">註冊完成後即可使用所有停車位查詢功能</p>
             </div>
           </div>
-          
+
           <Card className="max-w-2xl mx-auto">
             <CardContent className="p-6">
               <h4 className="text-lg font-semibold text-gray-900 mb-4 text-center">註冊要求</h4>
@@ -161,30 +208,26 @@ export default function Landing() {
               </CardContent>
             </Card>
             <Card className="p-6 text-center">
-            <CardContent className="pt-6">
-              {/* 跨裝置支援 */}
-              <div className="w-16 h-16 bg-green-600 rounded-full flex items-center justify-center mx-auto mb-4">
-                <MonitorSmartphone className="h-8 w-8 text-white" />
-              </div>
-              <h4 className="text-xl font-semibold text-gray-900 mb-2">跨裝置支援</h4>
-              <p className="text-gray-600">手機、平板、電腦都能使用</p>
-            </CardContent>
-          </Card>
-
-          <Card className="p-6 text-center">
-            <CardContent className="pt-6">
-              {/* 地圖整合 */}
-              <div className="w-16 h-16 bg-yellow-500 rounded-full flex items-center justify-center mx-auto mb-4">
-                <MapIcon className="h-8 w-8 text-white" />
-              </div>
-              <h4 className="text-xl font-semibold text-gray-900 mb-2">地圖整合</h4>
-              <p className="text-gray-600">Google Maps無縫整合</p>
-            </CardContent>
-          </Card>
+              <CardContent className="pt-6">
+                <div className="w-16 h-16 bg-green-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <MonitorSmartphone className="h-8 w-8 text-white" />
+                </div>
+                <h4 className="text-xl font-semibold text-gray-900 mb-2">跨裝置支援</h4>
+                <p className="text-gray-600">手機、平板、電腦都能使用</p>
+              </CardContent>
+            </Card>
+            <Card className="p-6 text-center">
+              <CardContent className="pt-6">
+                <div className="w-16 h-16 bg-yellow-500 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <MapIcon className="h-8 w-8 text-white" />
+                </div>
+                <h4 className="text-xl font-semibold text-gray-900 mb-2">地圖整合</h4>
+                <p className="text-gray-600">Google Maps無縫整合</p>
+              </CardContent>
+            </Card>
           </div>
         </div>
       </div>
-
 
       {/* Footer */}
       <footer className="bg-gray-900 text-white py-12">
@@ -225,8 +268,6 @@ export default function Landing() {
           </div>
           <div className="mt-8 pt-8 border-t border-gray-800 text-center text-gray-400">
             <p>&copy; 2024 位無一失. 版權所有 | 國立台灣科技大學專題作品</p>
-            <div className="mt-4">
-            </div>
           </div>
         </div>
       </footer>
