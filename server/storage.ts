@@ -82,34 +82,34 @@ export interface IStorage {
 }
 
 // storage.ts
-export class DatabaseStorage implements IStorage {
-  // ✅ 取得今日訪客記錄
-  async getVisitLog(date: string): Promise<{ date: string; count: number } | null> {
-    const result = await db.query.visit_logs.findFirst({
-      where: (log, { eq }) => eq(log.date, date),
-    });
-    if (!result) return null;
-    return { date: result.date, count: result.count ?? 0 };
-  }
+  export class DatabaseStorage implements IStorage {
+    // 取得今日訪客記錄 → 對外回傳 count，但內部存取 loginCount
+    async getVisitLog(date: string): Promise<{ date: string; count: number } | null> {
+      const result = await db.query.visit_logs.findFirst({
+        where: (log, { eq }) => eq(log.date, date),
+      });
+      if (!result) return null;
+      return { date: result.date, count: result.loginCount ?? 0 }; // ← 對外統一叫 count
+    }
 
-  // ✅ 新增今日訪客記錄
-  async insertVisitLog(date: string, count: number): Promise<void> {
-    await db.insert(visit_logs).values({ date, count });
-  }
+    // 新增今日訪客記錄 → 介面參數叫 count，實際寫入 loginCount
+    async insertVisitLog(date: string, count: number): Promise<void> {
+      await db.insert(visit_logs).values({ date, loginCount: count });
+    }
 
-  // ✅ 更新今日訪客記錄
-  async updateVisitLog(date: string, newCount: number): Promise<void> {
-    await db
-      .update(visit_logs)
-      .set({ count: newCount })
-      .where(eq(visit_logs.date, date));
-  }
+    // 更新今日訪客記錄 → 介面參數叫 count，實際更新 loginCount
+    async updateVisitLog(date: string, count: number): Promise<void> {
+      await db
+        .update(visit_logs)
+        .set({ loginCount: count })
+        .where(eq(visit_logs.date, date));
+    }
 
-  // User operations for custom authentication
-  async getUser(id: number): Promise<User | undefined> {
-    const [user] = await db.select().from(users).where(eq(users.id, id));
-    return user;
-  }
+    // User operations for custom authentication
+    async getUser(id: number): Promise<User | undefined> {
+      const [user] = await db.select().from(users).where(eq(users.id, id));
+      return user;
+    }
 
   async getUserByUsername(username: string): Promise<User | undefined> {
     const [user] = await db.select().from(users).where(eq(users.username, username));
