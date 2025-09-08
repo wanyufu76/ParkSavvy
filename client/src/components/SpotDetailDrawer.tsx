@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Navigation as NavigationIcon, X } from "lucide-react";
 import type { ParkingSpot } from "@shared/schema";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 
 interface Props {
   spot: ParkingSpot | null;
@@ -12,6 +13,10 @@ interface Props {
 export default function SpotDetailDrawer({ spot, onClose }: Props) {
   const queryClient = useQueryClient();
   const [uploadedSpots, setUploadedSpots] = useState<string[]>([]);
+
+  // 👉 積分不足對話框狀態
+  const [showInsufficientPointsDialog, setShowInsufficientPointsDialog] = useState(false);
+  const [insufficientMessage, setInsufficientMessage] = useState("");
 
   // 撈子車格資料
   const { data: subSpots = [] } = useQuery({
@@ -82,7 +87,7 @@ export default function SpotDetailDrawer({ spot, onClose }: Props) {
     window.open(imageUrl, "_blank");
   };
 
-   // 區域對照表（小寫對應資料夾）
+  // 區域對照表（小寫對應資料夾）
   const routeMapping: Record<string, string> = {
     "基隆路四段73巷": "ib",
     "基隆路三段155巷": "tr",
@@ -116,86 +121,133 @@ export default function SpotDetailDrawer({ spot, onClose }: Props) {
   }
 
   return (
-    <div
-      className="
+    <>
+      <div
+        className="
         fixed z-50 bg-white shadow-lg border
         right-2 top-4
         w-[320px] max-h-[56vh] rounded-lg
         overflow-y-auto
         sm:top-20 sm:right-4 sm:w-[400px] sm:max-h-[70vh]
       "
-    >
-      {/* Header */}
-      <div className="flex justify-between items-start sticky top-0 bg-white p-4 z-10">
-        <h3 className="text-lg font-semibold">{spot.name}</h3>
-        <Button variant="ghost" size="icon" onClick={onClose}>
-          <X className="h-5 w-5" />
-        </Button>
-      </div>
-
-      {/* Body */}
-      <div className="px-4 pb-4 flex flex-col gap-2">
-        <p className="text-sm text-muted-foreground truncate">{spot.address}</p>
-
-        {/* 價格 + 導航（並列於同一行） */}
-        <div className="flex items-center justify-between gap-3 mt-1">
-          <p className="text-sm">NT$ {spot.pricePerHour || 20} / 小時</p>
-
-          <Button
-            className="px-3 py-1 text-sm w-auto"
-            onClick={async () => {
-              const url = `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`;
-              const newWin = window.open(url, "_blank");
-              const ok = await handlePointUsage("navigation");
-              if (!ok && newWin) {
-                try {
-                  newWin.close();
-                } catch {}
-                alert("積分不足，無法使用導航功能");
-              }
-            }}
-          >
-            <NavigationIcon className="h-4 w-4 mr-1" />
-            導航
+      >
+        {/* Header */}
+        <div className="flex justify-between items-start sticky top-0 bg-white p-4 z-10">
+          <h3 className="text-lg font-semibold">{spot.name}</h3>
+          <Button variant="ghost" size="icon" onClick={onClose}>
+            <X className="h-5 w-5" />
           </Button>
         </div>
 
-        {/* 街景按鈕群：手機小按鈕橫向滾動，桌機維持縱向 full-width（透過 sm:class） */}
-        <div className="mt-3">
-          <div className="flex gap-2 overflow-x-auto sm:flex-col sm:overflow-x-visible">
-            {subSpots.map((ps: any) => (
-              <Button
-                key={ps.id}
-                variant="outline"
-                className="px-2 py-1 text-xs w-auto flex-shrink-0 sm:w-full"
-                onClick={async () => {
-                  // 先 open 再檢查：保持既有行為（不改導向邏輯）
-                  const region = getRegionFromSpotName(spot.name);
-                  const url = `/processed_images/${region}/${ps.label}_output.jpg`;
-                  const newWin = window.open(url, "_blank");
-                  const ok = await handlePointUsage("streetview");
-                  if (!ok && newWin) {
-                    try {
-                      newWin.close();
-                    } catch {}
-                    alert("積分不足，無法查看街景");
+        {/* Body */}
+        <div className="px-4 pb-4 flex flex-col gap-2">
+          <p className="text-sm text-muted-foreground truncate">{spot.address}</p>
+
+          {/* 價格 + 導航（並列於同一行） */}
+          <div className="flex items-center justify-between gap-3 mt-1">
+            <p className="text-sm">NT$ {spot.pricePerHour || 20} / 小時</p>
+
+            <Button
+              className="px-3 py-1 text-sm w-auto"
+              onClick={async () => {
+                try {
+                  // 先檢查地理位置權限狀態
+                  const status = await navigator.permissions.query({ name: "geolocation" as PermissionName });
+
+                  if (status.state === "denied") {
+                    alert("請在瀏覽器設定中允許位置存取，才能使用導航功能");
                     return;
                   }
-                  // 若有足夠積分，newWin 會顯示該 url（或瀏覽器會顯示 404，如果檔案不存在會在 server 判斷）
-                }}
-              >
-                街景：{ps.label}
-              </Button>
-            ))}
 
-            {subSpots.length === 0 && (
-              <p className="text-sm text-muted-foreground text-center w-full">
-                無子停車格資料
-              </p>
-            )}
+                  // 如果是首次（prompt）或已允許，呼叫 geolocation 觸發詢問/取得座標
+                  navigator.geolocation.getCurrentPosition(
+                    async (pos) => {
+                      const { latitude, longitude } = pos.coords;
+
+                      // 使用者目前位置 → 停車點
+                      const url = `https://www.google.com/maps/dir/?api=1&origin=${latitude},${longitude}&destination=${lat},${lng}`;
+                      const newWin = window.open(url, "_blank");
+
+                      const ok = await handlePointUsage("navigation");
+                      if (!ok && newWin) {
+                        try {
+                          newWin.close();
+                        } catch {}
+                        // 👉 改用積分不足對話框
+                        setInsufficientMessage("積分不足，無法使用導航功能\n請至影像上傳區上傳影像以獲取積分");
+                        setShowInsufficientPointsDialog(true);
+                      }
+                    },
+                    (err) => {
+                      console.error("定位失敗", err);
+                      alert("無法取得您的目前位置，請確認瀏覽器已允許定位");
+                    }
+                  );
+                } catch (err) {
+                  console.error("檢查定位權限失敗", err);
+                  alert("您的瀏覽器不支援地理定位功能");
+                }
+              }}
+            >
+              <NavigationIcon className="h-4 w-4 mr-1" />
+              導航
+            </Button>
+          </div>
+
+          {/* 街景按鈕群：手機小按鈕橫向滾動，桌機維持縱向 full-width（透過 sm:class） */}
+          <div className="mt-3">
+            <div className="flex gap-2 overflow-x-auto sm:flex-col sm:overflow-x-visible">
+              {subSpots.map((ps: any) => (
+                <Button
+                  key={ps.id}
+                  variant="outline"
+                  className="px-2 py-1 text-xs w-auto flex-shrink-0 sm:w-full"
+                  onClick={async () => {
+                    // 先 open 再檢查：保持既有行為（不改導向邏輯）
+                    const region = getRegionFromSpotName(spot.name);
+                    const url = `/processed_images/${region}/${ps.label}_output.jpg`;
+                    const newWin = window.open(url, "_blank");
+                    const ok = await handlePointUsage("streetview");
+                    if (!ok && newWin) {
+                      try {
+                        newWin.close();
+                      } catch {}
+                      // 👉 改用積分不足對話框
+                      setInsufficientMessage("積分不足，無法查看街景\n請至影像上傳區上傳影像以獲取積分");
+                      setShowInsufficientPointsDialog(true);
+                      return;
+                    }
+                    // 若有足夠積分，newWin 會顯示該 url（或瀏覽器會顯示 404，如果檔案不存在會在 server 判斷）
+                  }}
+                >
+                  街景：{ps.label}
+                </Button>
+              ))}
+
+              {subSpots.length === 0 && (
+                <p className="text-sm text-muted-foreground text-center w-full">
+                  無子停車格資料
+                </p>
+              )}
+            </div>
           </div>
         </div>
       </div>
-    </div>
+
+      {/* 👉 積分不足對話框 */}
+      <Dialog open={showInsufficientPointsDialog} onOpenChange={setShowInsufficientPointsDialog}>
+        <DialogContent className="sm:max-w-[400px] rounded-xl">
+          <DialogHeader>
+            <DialogTitle>積分不足</DialogTitle>
+            <DialogDescription className="whitespace-pre-line">
+              {insufficientMessage}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex justify-center pt-2">
+            <Button onClick={() => setShowInsufficientPointsDialog(false)}>關閉</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
