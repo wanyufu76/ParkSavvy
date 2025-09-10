@@ -148,50 +148,53 @@ export default function SpotDetailDrawer({ spot, onClose }: Props) {
             <p className="text-sm">NT$ {spot.pricePerHour || 20} / 小時</p>
 
             <Button
-              className="px-3 py-1 text-sm w-auto"
-              onClick={async () => {
-                try {
-                  // 先檢查地理位置權限狀態
-                  const status = await navigator.permissions.query({ name: "geolocation" as PermissionName });
+            className="px-3 py-1 text-sm w-auto"
+            onClick={async () => {
+              try {
+                const status = await navigator.permissions.query({
+                  name: "geolocation" as PermissionName,
+                });
 
-                  if (status.state === "denied") {
-                    alert("請在瀏覽器設定中允許位置存取，才能使用導航功能");
-                    return;
-                  }
-
-                  // 如果是首次（prompt）或已允許，呼叫 geolocation 觸發詢問/取得座標
-                  navigator.geolocation.getCurrentPosition(
-                    async (pos) => {
-                      const { latitude, longitude } = pos.coords;
-
-                      // 使用者目前位置 → 停車點
-                      const url = `https://www.google.com/maps/dir/?api=1&origin=${latitude},${longitude}&destination=${lat},${lng}`;
-                      const newWin = window.open(url, "_blank");
-
-                      const ok = await handlePointUsage("navigation");
-                      if (!ok && newWin) {
-                        try {
-                          newWin.close();
-                        } catch {}
-                        // 👉 改用積分不足對話框
-                        setInsufficientMessage("積分不足，無法使用導航功能\n請至影像上傳區上傳影像以獲取積分");
-                        setShowInsufficientPointsDialog(true);
-                      }
-                    },
-                    (err) => {
-                      console.error("定位失敗", err);
-                      alert("無法取得您的目前位置，請確認瀏覽器已允許定位");
-                    }
-                  );
-                } catch (err) {
-                  console.error("檢查定位權限失敗", err);
-                  alert("您的瀏覽器不支援地理定位功能");
+                if (status.state === "denied") {
+                  alert("請在瀏覽器設定中允許位置存取，才能使用導航功能");
+                  return;
                 }
-              }}
-            >
-              <NavigationIcon className="h-4 w-4 mr-1" />
-              導航
-            </Button>
+
+                navigator.geolocation.getCurrentPosition(
+                  async (pos) => {
+                    const { latitude, longitude } = pos.coords;
+
+                    const url = `https://www.google.com/maps/dir/?api=1&origin=${latitude},${longitude}&destination=${lat},${lng}`;
+
+                    // 📱 手機 → 同分頁，💻 桌機 → 新分頁
+                    if (/Mobi|Android/i.test(navigator.userAgent)) {
+                      window.location.href = url;
+                    } else {
+                      window.open(url, "_blank");
+                    }
+
+                    const ok = await handlePointUsage("navigation");
+                    if (!ok) {
+                      setInsufficientMessage(
+                        "積分不足，無法使用導航功能\n請至影像上傳區上傳影像以獲取積分"
+                      );
+                      setShowInsufficientPointsDialog(true);
+                    }
+                  },
+                  (err) => {
+                    console.error("定位失敗", err);
+                    alert("無法取得您的目前位置，請確認瀏覽器已允許定位");
+                  }
+                );
+              } catch (err) {
+                console.error("檢查定位權限失敗", err);
+                alert("您的瀏覽器不支援地理定位功能");
+              }
+            }}
+          >
+            <NavigationIcon className="h-4 w-4 mr-1" />
+            導航
+          </Button>
           </div>
 
           {/* 街景按鈕群：手機小按鈕橫向滾動，桌機維持縱向 full-width（透過 sm:class） */}
