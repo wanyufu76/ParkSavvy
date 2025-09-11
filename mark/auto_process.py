@@ -11,6 +11,7 @@ from supabase import create_client
 # from infer_location import infer_location_clip
 from pathlib import Path
 from infer_location import infer_area_by_kp
+from infer_location import _write_inferred_area_sidecar as _write_sidecar_atomic
 import math
 
 
@@ -23,6 +24,18 @@ BASE_IMAGES_ROOT = Path(r"E:\ParkSavvy")
 DOWNLOAD_DIR = "downloads"
 os.makedirs(BASE_CONFIG_DIR, exist_ok=True)
 os.makedirs(DOWNLOAD_DIR, exist_ok=True)
+
+# —— 新增：正規化工具（允許多字母路名，如 gges/hilife）
+AREA_RE = re.compile(r"^[a-z]+_[A-Z]\d{2}$")
+
+def normalize_final_area(location: str, area: str | None) -> str | None:
+    """把 (location, area) 組成 ib_G01 / gges_A02；不合法就回 None。"""
+    if not location or not area:
+        return None
+    if isinstance(area, tuple):
+        return None
+    s = f"{str(location).strip().lower()}_{str(area).strip().upper()}"
+    return s if AREA_RE.match(s) else None
 
 # ----------------- 幾何函式 -----------------
 def reorder_box_points(points):
@@ -289,15 +302,38 @@ def generate_json_for_location(inferred_area: str):
         return
 
     cfg = box_data[0]
-    coords = json.loads(cfg["coords"])
+    # --- 讀 coords：可能是 jsonb(list) 或字串 ---
+    coords_raw = cfg.get("coords")
+
+    if isinstance(coords_raw, str):
+        try:
+            coords = json.loads(coords_raw)
+        except Exception as e:
+            print(f"⚠️ coords 不是合法 JSON 字串：{e} → 跳過")
+            return
+    elif isinstance(coords_raw, (list, tuple)):
+        coords = coords_raw
+    else:
+        print(f"⚠️ coords 型別不支援：{type(coords_raw)} → 跳過")
+        return
+
+    # 基本驗證
+    if not isinstance(coords, list) or len(coords) < 4:
+        print(f"⚠️ coords 數量不足（期望至少 4 個點），實際={len(coords) if isinstance(coords, list) else 'N/A'} → 跳過")
+        return
+
     # 將藍框轉為像素座標
-    box_points = np.array([
-        [
-            (c["lng"] - cfg["lng_min"]) / (cfg["lng_max"] - cfg["lng_min"]) * cfg["img_width"],
-            (cfg["lat_max"] - c["lat"]) / (cfg["lat_max"] - cfg["lat_min"]) * cfg["img_height"],
-        ]
-        for c in coords
-    ], dtype=float)
+    try:
+        box_points = np.array([
+            [
+                (c["lng"] - cfg["lng_min"]) / (cfg["lng_max"] - cfg["lng_min"]) * cfg["img_width"],
+                (cfg["lat_max"] - c["lat"]) / (cfg["lat_max"] - cfg["lat_min"]) * cfg["img_height"],
+            ]
+            for c in coords
+        ], dtype=float)
+    except KeyError as e:
+        print(f"⚠️ coords 缺欄位：{e}（預期有 lat/lng）→ 跳過")
+        return
     box_points = reorder_box_points(box_points)
 
     # 5) 組 markers（只加入可算出 lat/lng 的點，確保 points 與 markers 對齊）
@@ -383,7 +419,7 @@ if __name__ == "__main__":
         for img in images:
             filename = img["filename"]
             image_id = img["id"]
-            location = (img.get("location") or "").strip()  # 路段：ib / tr
+            location = (img.get("location") or "").strip()  # 路段：ib / tr / gges / hilife...
 
             # 下載影像（若已存在會覆蓋/複寫，OK）
             downloaded_path = download_image(filename)
@@ -391,21 +427,29 @@ if __name__ == "__main__":
                 mark_as_processed(image_id)
                 continue
 
-            # 只在該「location 的底圖庫」中推論純區代號（A01/B01/...）
-            area_id = infer_area_by_kp(downloaded_path, str(BASE_IMAGES_ROOT), location)
+            # === 新版：直接讀 autoRunner 已經寫好的 sidecar ===
+            sidecar_path = os.path.join(r"E:\ParkSavvy\uploads", filename + ".area.json")
+            inferred_area_value = None
+            if os.path.exists(sidecar_path):
+                with open(sidecar_path, "r", encoding="utf-8") as f:
+                    j = json.load(f)
+                    inferred_area_value = j.get("inferred_area")
+
             print(f"\n處理圖片: {filename} @ {location}")
-            print(f"📍 推論到的區域代號(area_id): {area_id}")
+            print(f"📍 使用 sidecar 的 inferred_area = {inferred_area_value}")
 
-            inferred_area_value = f"{location}_{area_id}" if area_id else None
-
-            # 寫回 DB：image_uploads.inferred_area
-            supabase.table("image_uploads")\
-                .update({"inferred_area": inferred_area_value})\
-                .eq("id", image_id)\
+            # ❹ 更新 DB 並印出回應（方便除錯）
+            resp = (
+                supabase.table("image_uploads")
+                .update({"inferred_area": inferred_area_value})
+                .eq("id", image_id)
                 .execute()
+            )
+            print("[DB] update inferred_area →", inferred_area_value, "| data:", resp.data)
 
-            if not area_id:
-                print("❌ 無法推論區域（area_id 為空），先標記 processed 跳過此圖")
+            # ❺ 沒找到合法區域 → 標 processed 跳過（避免 based_mark 爆）
+            if not inferred_area_value:
+                print("❌ 無法推論合法區域（None 或格式不符）→ 標記 processed 跳過此圖")
                 mark_as_processed(image_id)
                 continue
 
@@ -413,7 +457,7 @@ if __name__ == "__main__":
                 "id": image_id,
                 "filename": filename,
                 "created_at": img.get("created_at", ""),
-                "inferred_area": inferred_area_value,   # 例如 ib_H01
+                "inferred_area": inferred_area_value,   # 例如 ib_H01 / gges_G01
             })
 
         if not prepared:

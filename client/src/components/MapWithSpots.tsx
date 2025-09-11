@@ -1260,22 +1260,22 @@ export default function MapWithSpots({ onSpotClick }: Props) {
     {/* ✅ P 點顏色圖例：左上角 + 蒂芬妮綠 */}
     <div
       className="absolute top-4 left-4 bg-white bg-opacity-90 rounded-xl shadow-lg p-3 text-sm space-y-1"
-      style={{ zIndex: 999 }}
+      style={{ zIndex: 10 }}
     >
       <div>
         <span
           className="inline-block w-3 h-3 rounded-full mr-2"
           style={{ backgroundColor: "#30D5C8" }} // 蒂芬妮綠
         />
-        空位（&gt; 50%）
+        車位充足
       </div>
       <div>
         <span className="inline-block w-3 h-3 rounded-full bg-yellow-400 mr-2" />
-        有限（&lt; 50%）
+        車位有限
       </div>
       <div>
         <span className="inline-block w-3 h-3 rounded-full bg-red-500 mr-2" />
-        充足（0%）
+        車位已滿
       </div>
     </div>
   </div>
