@@ -4,6 +4,11 @@ from scipy.optimize import linear_sum_assignment
 import io
 from ultralytics import YOLO
 from supabase import create_client
+import sys
+import io
+
+sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
+sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="replace")
 
 # Supabase 連線
 SUPABASE_URL = "https://polqjhuklxclnvgpjckf.supabase.co"
@@ -22,6 +27,12 @@ def get_base_config(area_id: str, route_key: str | None):
     從 base_configs 撈對應的 Homography 與底圖資訊
     - 優先用 (route_key, area_id)；route_key 為空則只用 area_id（向下相容）
     """
+    area_str = str(area_id)
+    if not area_str or area_str.upper().startswith("(NONE"):
+        raise ValueError(
+            f"區域推論尚未就緒：收到 area_id={area_str!r}, route_key={route_key or '(none)'}；"
+            "請確認自動流程是在 inferred_area 寫入後才呼叫 based_mark。"
+        )
     q = supabase.table("base_configs").select("*").eq("area_id", area_id)
     if route_key:
         q = q.eq("route_key", route_key)
