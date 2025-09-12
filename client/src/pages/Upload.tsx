@@ -556,64 +556,62 @@ export default function Upload() {
                   {uploads.map((upload) => (
                     <div key={upload.id} className="p-6 hover:bg-gray-50">
                       <div className="flex items-center justify-between">
-                        <div className="flex items-center space-x-4">
-                          <div
-                            className={`w-12 h-12 rounded-lg flex items-center justify-center ${
-                              upload.processed ? "bg-success" : "bg-warning"
-                            }`}
-                          >
-                            {upload.mimeType.startsWith("image/") ? (
-                              <Image className="h-6 w-6 text-white" />
-                            ) : (
-                              <Video className="h-6 w-6 text-white" />
-                            )}
-                          </div>
-                          <div>
-                            <h4
-                              className="font-medium text-gray-900 truncate max-w-xs"
-                              title={`原始檔名：${upload.originalName}`}
-                            >
-                              {upload.filename}
-                            </h4>
-                            <p className="text-sm text-gray-600">
-                              {upload.location || "未指定地點"}
-                            </p>
-                            <p className="text-xs text-gray-500">
-                              {new Date(
-                                upload.createdAt || ""
-                              ).toLocaleString("zh-TW")}
-                            </p>
-                          </div>
+                      <div className="flex items-center space-x-4 flex-1 min-w-0">
+                        <div
+                          className={`w-12 h-12 rounded-lg flex items-center justify-center ${
+                            upload.processed ? "bg-success" : "bg-warning"
+                          }`}
+                        >
+                          {upload.mimeType.startsWith("image/") ? (
+                            <Image className="h-6 w-6 text-white" />
+                          ) : (
+                            <Video className="h-6 w-6 text-white" />
+                          )}
                         </div>
-                        <div className="flex items-center space-x-4">
-                          <span
-                            className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                              upload.processed
-                                ? "bg-success text-white"
-                                : "bg-warning text-white"
-                            }`}
+                        <div className="min-w-0">
+                          <h4
+                            className="font-medium text-gray-900 truncate"
+                            title={`原始檔名：${upload.originalName}`}
                           >
-                            {upload.processed ? (
-                              <>
-                                <Check className="h-3 w-3 mr-1" />
-                                已處理
-                              </>
-                            ) : (
-                              <>
-                                <Clock className="h-3 w-3 mr-1" />
-                                處理中
-                              </>
-                            )}
-                          </span>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => deleteMutation.mutate(upload.id)}
-                          >
-                            <Trash className="h-4 w-4 text-red-500" />
-                          </Button>
+                            {upload.filename}
+                          </h4>
+                          <p className="text-sm text-gray-600 truncate">
+                            {upload.location || "未指定地點"}
+                          </p>
+                          <p className="text-xs text-gray-500 truncate">
+                            {new Date(upload.createdAt || "").toLocaleString("zh-TW")}
+                          </p>
                         </div>
                       </div>
+
+                      <div className="flex items-center space-x-2 flex-shrink-0">
+                        <span
+                          className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                            upload.processed ? "bg-success text-white" : "bg-warning text-white"
+                          }`}
+                        >
+                          {upload.processed ? (
+                            <>
+                              <Check className="h-3 w-3 mr-1" />
+                              已處理
+                            </>
+                          ) : (
+                            <>
+                              <Clock className="h-3 w-3 mr-1" />
+                              處理中
+                            </>
+                          )}
+                        </span>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 flex items-center justify-center rounded-full hover:bg-red-50"
+                          onClick={() => deleteMutation.mutate(upload.id)}
+                        >
+                          <Trash className="h-4 w-4 text-red-500" />
+                        </Button>
+                      </div>
+                    </div>
                     </div>
                   ))}
                 </div>
