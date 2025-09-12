@@ -3,7 +3,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { isUnauthorizedError } from "@/lib/authUtils";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { queryClient } from "@/lib/queryClient";
 import Navigation from "@/components/Navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -23,7 +23,167 @@ import {
   Camera,
   Trash,
 } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import type { ImageUpload } from "@shared/schema";
+
+// 📸 CameraPreview 子元件
+function CameraPreview({ onCapture }: { onCapture: (file: File) => void }) {
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const [previewSrc, setPreviewSrc] = useState<string | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+
+  // 啟動相機
+  const startCamera = async () => {
+    try {
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach((t) => t.stop());
+      }
+
+      // 嘗試 Full HD
+      streamRef.current = await navigator.mediaDevices.getUserMedia({
+        video: {
+          facingMode: "environment",
+          width: { ideal: 1920 },
+          height: { ideal: 1080 },
+        },
+        audio: false,
+      });
+
+      if (videoRef.current) {
+        videoRef.current.srcObject = streamRef.current;
+        videoRef.current.onloadedmetadata = () => {
+          if (canvasRef.current && videoRef.current) {
+            // 用相機原始解析度設定 canvas
+            canvasRef.current.width = videoRef.current.videoWidth || 1280;
+            canvasRef.current.height = videoRef.current.videoHeight || 720;
+          }
+        };
+      }
+    } catch (err) {
+      console.error("相機開啟失敗:", err);
+    }
+  };
+
+  useEffect(() => {
+    startCamera();
+    return () => {
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach((t) => t.stop());
+      }
+    };
+  }, []);
+
+  // 繪製虛線框
+  useEffect(() => {
+    const ctx = canvasRef.current?.getContext("2d");
+    if (!ctx || !canvasRef.current) return;
+
+    const draw = () => {
+      if (!canvasRef.current || !videoRef.current || previewSrc) return;
+      ctx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
+
+      ctx.strokeStyle = "rgba(255,255,255,0.8)";
+      ctx.lineWidth = 3;
+      ctx.setLineDash([10, 10]);
+
+      // 機車框
+      ctx.strokeRect(
+        canvasRef.current.width * 0.1,
+        canvasRef.current.height * 0.4,
+        canvasRef.current.width * 0.8,
+        canvasRef.current.height * 0.5
+      );
+
+      requestAnimationFrame(draw);
+    };
+    draw();
+  }, [previewSrc]);
+
+  // 拍照
+  const handleCapture = () => {
+    if (!videoRef.current) return;
+    const w = videoRef.current.videoWidth || 1280;
+    const h = videoRef.current.videoHeight || 720;
+
+    const canvas = document.createElement("canvas");
+    canvas.width = w;
+    canvas.height = h;
+
+    const ctx = canvas.getContext("2d");
+    if (ctx) {
+      ctx.drawImage(videoRef.current, 0, 0, w, h);
+      setPreviewSrc(canvas.toDataURL("image/jpeg", 1.0)); // 高品質 JPEG
+    }
+  };
+
+  // 確認使用
+  const handleConfirm = () => {
+    if (!previewSrc) return;
+    const arr = previewSrc.split(",");
+    const mime = arr[0].match(/:(.*?);/)?.[1] || "image/jpeg";
+    const bstr = atob(arr[1]);
+    let n = bstr.length;
+    const u8arr = new Uint8Array(n);
+    while (n--) u8arr[n] = bstr.charCodeAt(n);
+    const file = new File([u8arr], `capture-${Date.now()}.jpg`, { type: mime });
+    onCapture(file);
+    setPreviewSrc(null);
+    startCamera();
+  };
+
+  // 重拍
+  const handleRetake = () => {
+    setPreviewSrc(null);
+    startCamera();
+  };
+
+  return (
+    <div className="relative w-full max-w-md mx-auto">
+      {!previewSrc ? (
+        <>
+          <video
+            ref={videoRef}
+            autoPlay
+            playsInline
+            muted
+            className="w-full h-auto bg-black rounded-lg object-cover"
+          />
+          <canvas
+            ref={canvasRef}
+            className="absolute top-0 left-0 w-full h-full pointer-events-none"
+          />
+          <div className="flex justify-center mt-2">
+            <Button
+              type="button"
+              onClick={handleCapture}
+              className="p-3 rounded-full bg-primary text-white hover:bg-primary/90"
+            >
+              <Camera className="h-6 w-6" />
+            </Button>
+          </div>
+        </>
+      ) : (
+        <>
+          <img src={previewSrc} alt="預覽" className="w-full rounded-lg" />
+          <div className="flex justify-center gap-4 mt-2">
+            <Button variant="secondary" onClick={handleRetake}>
+              重新拍攝
+            </Button>
+            <Button className="bg-primary text-white" onClick={handleConfirm}>
+              使用此相片
+            </Button>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
 
 export default function Upload() {
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
@@ -31,11 +191,9 @@ export default function Upload() {
   const [datetime, setDatetime] = useState("");
   const [description, setDescription] = useState("");
   const [isDragOver, setIsDragOver] = useState(false);
+  const [showCamera, setShowCamera] = useState(false);
 
-  // Refs for file inputs
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const cameraFileInputRef = useRef<HTMLInputElement | null>(null);
-
   const { toast } = useToast();
   const { isAuthenticated, isLoading: authLoading } = useAuth();
 
@@ -123,7 +281,6 @@ export default function Upload() {
     setDatetime("");
     setDescription("");
     if (fileInputRef.current) fileInputRef.current.value = "";
-    if (cameraFileInputRef.current) cameraFileInputRef.current.value = "";
   };
 
   const formatFileSize = (bytes: number) => {
@@ -175,58 +332,6 @@ export default function Upload() {
     uploadMutation.mutate(formData);
   };
 
-  // ---------- keep only system camera fallback, but avoid opening file picker on desktop ----------
-  const openCamera = async () => {
-    // Detect likely mobile devices (simple heuristic)
-    const ua = typeof navigator !== "undefined" ? navigator.userAgent || "" : "";
-    const isMobile = /Mobi|Android|iPhone|iPad|iPod/i.test(ua) || (window.matchMedia && window.matchMedia("(pointer: coarse)").matches);
-
-    if (isMobile) {
-      // On mobile, trigger the hidden file input with capture attribute.
-      // This will open system camera on most mobile browsers.
-      cameraFileInputRef.current?.click();
-      return;
-    }
-
-    // On non-mobile (desktop), do NOT trigger the capture file input (that opens file picker).
-    // Instead, try to check if browser supports getUserMedia and inform user / fallback.
-    if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-      try {
-        // Try requesting camera permission briefly to detect availability.
-        // We immediately stop the stream — this is only to detect & inform.
-        const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-        // If succeeded, stop tracks and inform user that desktop camera is available.
-        stream.getTracks().forEach((t) => t.stop());
-        toast({
-          title: "有可用攝影機",
-          description: "此裝置有攝影機，但桌機通常需要使用預覽/拍照功能（尚未在桌機上切換系統相機）。請使用「選擇檔案」上傳或到手機拍照上傳。",
-        });
-      } catch (err: any) {
-        // Permission denied or no camera
-        if (err && err.name === "NotAllowedError") {
-          toast({
-            title: "相機權限被拒絕",
-            description: "請至瀏覽器設定允許相機權限，或使用「選擇檔案」上傳。",
-            variant: "destructive",
-          });
-        } else {
-          toast({
-            title: "無法啟動相機",
-            description: "此設備或瀏覽器無法直接啟動相機，請使用「選擇檔案」上傳或改用手機拍照。",
-            variant: "destructive",
-          });
-        }
-      }
-    } else {
-      // No getUserMedia support
-      toast({
-        title: "無法使用系統相機",
-        description: "此瀏覽器/裝置不支援直接啟動相機。請使用「選擇檔案」上傳或改用手機拍照。",
-        variant: "destructive",
-      });
-    }
-  };
-
   if (authLoading) return null;
 
   return (
@@ -234,35 +339,19 @@ export default function Upload() {
       <Navigation />
 
       <div className="max-w-4xl mx-auto px-4 py-8">
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          <div className="mb-8 flex items-center justify-between">
-            <div>
-              <h2 className="text-3xl font-bold text-gray-900 mb-4">
-                <UploadIcon className="h-8 w-8 text-primary mr-3 inline" />
-                影像上傳區
-              </h2>
-              <p className="text-lg text-gray-600">上傳行車記錄器畫面，協助改善AI模型準確度</p>
-            </div>
-
-            <div className="flex flex-col items-end">
-              <Button
-                variant={uploads.length > 0 ? "default" : "secondary"}
-                disabled={uploads.length === 0}
-                onClick={() => (window.location.href = "/shared-videos")}
-                className={uploads.length === 0 ? "cursor-not-allowed opacity-50" : ""}
-              >
-                <Video className="h-4 w-4 mr-2" />
-                查看他人共享影片
-              </Button>
-              {uploads.length === 0 && (
-                <p className="text-sm text-gray-500 mt-2 max-w-48 text-right">
-                  上傳影片方可與他人共享資源
-                </p>
-              )}
-            </div>
+        <div className="mb-8 flex items-center justify-between">
+          <div>
+            <h2 className="text-3xl font-bold text-gray-900 mb-4">
+              <UploadIcon className="h-8 w-8 text-primary mr-3 inline" />
+              影像上傳區
+            </h2>
+            <p className="text-lg text-gray-600">
+              上傳行車記錄器畫面，協助改善AI模型準確度
+            </p>
           </div>
         </div>
 
+        {/* 上傳說明 */}
         <Card className="mb-8 bg-blue-50 border-blue-200">
           <CardContent className="p-6">
             <h3 className="text-lg font-semibold text-blue-900 mb-4">
@@ -286,11 +375,15 @@ export default function Upload() {
           </CardContent>
         </Card>
 
+        {/* 上傳表單 */}
         <Card>
           <CardContent className="p-8">
             <form onSubmit={handleSubmit} className="space-y-6">
+              {/* 拖拽區 */}
               <div
-                className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors duration-200 ${isDragOver ? "border-primary bg-blue-50" : "border-gray-300 hover:border-primary"}`}
+                className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors duration-200 ${
+                  isDragOver ? "border-primary bg-blue-50" : "border-gray-300 hover:border-primary"
+                }`}
                 onDragOver={handleDragOver}
                 onDragLeave={handleDragLeave}
                 onDrop={handleDrop}
@@ -300,11 +393,12 @@ export default function Upload() {
                     <CloudUpload className="h-8 w-8 text-gray-400" />
                   </div>
                   <div>
-                    <h3 className="text-lg font-medium text-gray-900 mb-2">拖拽檔案到此處或點擊選擇</h3>
+                    <h3 className="text-lg font-medium text-gray-900 mb-2">
+                      拖拽檔案到此處或點擊選擇
+                    </h3>
                     <p className="text-gray-600">支援 JPEG、PNG、AVI、MOV、MP4 格式</p>
                   </div>
 
-                  {/* file input (regular) */}
                   <input
                     ref={fileInputRef}
                     type="file"
@@ -313,20 +407,6 @@ export default function Upload() {
                     accept=".jpg,.jpeg,.png,.mp4,.avi,.mov"
                     className="hidden"
                     onChange={handleFileSelect}
-                  />
-
-                  {/* camera fallback input (mobile) - opens system camera when capture attribute present */}
-                  <input
-                    ref={cameraFileInputRef}
-                    type="file"
-                    id="camera-file-input"
-                    accept="image/*"
-                    capture="environment"
-                    className="hidden"
-                    onChange={(e) => {
-                      const f = e.target.files && e.target.files[0];
-                      if (f) setSelectedFiles((prev) => [...prev, f]);
-                    }}
                   />
 
                   <div className="flex justify-center gap-4">
@@ -339,11 +419,11 @@ export default function Upload() {
                       選擇檔案
                     </Button>
 
-                    {/* ONLY keep system camera: label "開啟相機" and camera icon in front */}
+                    {/* 開啟相機 */}
                     <Button
                       type="button"
                       variant="secondary"
-                      onClick={openCamera}
+                      onClick={() => setShowCamera(true)}
                     >
                       <Camera className="h-4 w-4 mr-2" />
                       開啟相機
@@ -352,13 +432,16 @@ export default function Upload() {
                 </div>
               </div>
 
-              {/* Selected file list */}
+              {/* 已選檔案 */}
               {selectedFiles.length > 0 && (
                 <div className="space-y-3">
                   <h4 className="font-medium text-gray-900">已選擇的檔案</h4>
                   <div className="space-y-2">
                     {selectedFiles.map((file, idx) => (
-                      <div key={idx} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                      <div
+                        key={idx}
+                        className="flex items-center justify-between p-3 bg-gray-50 rounded-lg"
+                      >
                         <div className="flex items-center space-x-3">
                           {file.type.startsWith("image/") ? (
                             <Image className="h-5 w-5 text-blue-500" />
@@ -366,15 +449,23 @@ export default function Upload() {
                             <Video className="h-5 w-5 text-green-500" />
                           )}
                           <div>
-                            <p className="font-medium text-gray-900">{file.name}</p>
-                            <p className="text-sm text-gray-500">{formatFileSize(file.size)}</p>
+                            <p className="font-medium text-gray-900">
+                              {file.name}
+                            </p>
+                            <p className="text-sm text-gray-500">
+                              {formatFileSize(file.size)}
+                            </p>
                           </div>
                         </div>
                         <Button
                           type="button"
                           variant="ghost"
                           size="sm"
-                          onClick={() => setSelectedFiles(selectedFiles.filter((_, i) => i !== idx))}
+                          onClick={() =>
+                            setSelectedFiles(
+                              selectedFiles.filter((_, i) => i !== idx)
+                            )
+                          }
                         >
                           ×
                         </Button>
@@ -384,7 +475,7 @@ export default function Upload() {
                 </div>
               )}
 
-              {/* Location & datetime */}
+              {/* 地點與時間 */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
                   <Label htmlFor="location">拍攝地點</Label>
@@ -404,19 +495,34 @@ export default function Upload() {
                 </div>
                 <div>
                   <Label htmlFor="datetime">拍攝時間</Label>
-                  <Input id="datetime" type="datetime-local" value={datetime} onChange={(e) => setDatetime(e.target.value)} />
+                  <Input
+                    id="datetime"
+                    type="datetime-local"
+                    value={datetime}
+                    onChange={(e) => setDatetime(e.target.value)}
+                  />
                 </div>
               </div>
 
-              {/* Description */}
+              {/* 描述 */}
               <div>
                 <Label htmlFor="description">描述（選填）</Label>
-                <Textarea id="description" rows={3} placeholder="請描述停車場狀況，例如：尖峰時段、天氣狀況等" value={description} onChange={(e) => setDescription(e.target.value)} />
+                <Textarea
+                  id="description"
+                  rows={3}
+                  placeholder="請描述停車場狀況，例如：尖峰時段、天氣狀況等"
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                />
               </div>
 
-              {/* Buttons */}
+              {/* 按鈕 */}
               <div className="flex gap-4">
-                <Button type="submit" className="flex-1 bg-primary hover:bg-primary/90" disabled={uploadMutation.isPending}>
+                <Button
+                  type="submit"
+                  className="flex-1 bg-primary hover:bg-primary/90"
+                  disabled={uploadMutation.isPending}
+                >
                   {uploadMutation.isPending ? (
                     <>
                       <Clock className="h-4 w-4 mr-2 animate-spin" />
@@ -438,7 +544,7 @@ export default function Upload() {
           </CardContent>
         </Card>
 
-        {/* Upload history */}
+        {/* 上傳紀錄 */}
         <div className="mt-12">
           <h3 className="text-xl font-semibold text-gray-900 mb-6">上傳記錄</h3>
           <Card>
@@ -451,22 +557,59 @@ export default function Upload() {
                     <div key={upload.id} className="p-6 hover:bg-gray-50">
                       <div className="flex items-center justify-between">
                         <div className="flex items-center space-x-4">
-                          <div className={`w-12 h-12 rounded-lg flex items-center justify-center ${upload.processed ? "bg-success" : "bg-warning"}`}>
-                            {upload.mimeType.startsWith("image/") ? <Image className="h-6 w-6 text-white" /> : <Video className="h-6 w-6 text-white" />}
+                          <div
+                            className={`w-12 h-12 rounded-lg flex items-center justify-center ${
+                              upload.processed ? "bg-success" : "bg-warning"
+                            }`}
+                          >
+                            {upload.mimeType.startsWith("image/") ? (
+                              <Image className="h-6 w-6 text-white" />
+                            ) : (
+                              <Video className="h-6 w-6 text-white" />
+                            )}
                           </div>
                           <div>
-                            <h4 className="font-medium text-gray-900 truncate max-w-xs" title={`原始檔名：${upload.originalName}`}>
+                            <h4
+                              className="font-medium text-gray-900 truncate max-w-xs"
+                              title={`原始檔名：${upload.originalName}`}
+                            >
                               {upload.filename}
                             </h4>
-                            <p className="text-sm text-gray-600">{upload.location || "未指定地點"}</p>
-                            <p className="text-xs text-gray-500">{new Date(upload.createdAt || "").toLocaleString("zh-TW")}</p>
+                            <p className="text-sm text-gray-600">
+                              {upload.location || "未指定地點"}
+                            </p>
+                            <p className="text-xs text-gray-500">
+                              {new Date(
+                                upload.createdAt || ""
+                              ).toLocaleString("zh-TW")}
+                            </p>
                           </div>
                         </div>
                         <div className="flex items-center space-x-4">
-                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${upload.processed ? "bg-success text-white" : "bg-warning text-white"}`}>
-                            {upload.processed ? <><Check className="h-3 w-3 mr-1" />已處理</> : <><Clock className="h-3 w-3 mr-1" />處理中</>}
+                          <span
+                            className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                              upload.processed
+                                ? "bg-success text-white"
+                                : "bg-warning text-white"
+                            }`}
+                          >
+                            {upload.processed ? (
+                              <>
+                                <Check className="h-3 w-3 mr-1" />
+                                已處理
+                              </>
+                            ) : (
+                              <>
+                                <Clock className="h-3 w-3 mr-1" />
+                                處理中
+                              </>
+                            )}
                           </span>
-                          <Button variant="ghost" size="sm" onClick={() => deleteMutation.mutate(upload.id)}>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => deleteMutation.mutate(upload.id)}
+                          >
                             <Trash className="h-4 w-4 text-red-500" />
                           </Button>
                         </div>
@@ -484,6 +627,23 @@ export default function Upload() {
           </Card>
         </div>
       </div>
+
+      {/* 📸 Dialog for Camera */}
+      <Dialog open={showCamera} onOpenChange={setShowCamera}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle>
+              請將機車置於下列虛線框內<br />並保留上方背景
+            </DialogTitle>
+          </DialogHeader>
+          <CameraPreview
+            onCapture={(file) => {
+              setSelectedFiles((prev) => [...prev, file]);
+              setShowCamera(false);
+            }}
+          />
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
