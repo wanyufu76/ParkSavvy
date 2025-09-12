@@ -200,7 +200,14 @@ export default function SpotDetailDrawer({ spot, onClose }: Props) {
           {/* 街景按鈕群：手機小按鈕橫向滾動，桌機維持縱向 full-width（透過 sm:class） */}
           <div className="mt-3">
             <div className="flex gap-2 overflow-x-auto sm:flex-col sm:overflow-x-visible">
-              {subSpots.map((ps: any) => (
+              {[...subSpots]
+                .sort((a, b) => {
+                  // 只針對 label 的數字部分排序（假設 label = "A01", "A02"...）
+                  const numA = parseInt(a.label.slice(1), 10);
+                  const numB = parseInt(b.label.slice(1), 10);
+                  return numA - numB;
+                })
+                .map((ps: any) => (
                 <Button
                   key={ps.id}
                   variant="outline"
