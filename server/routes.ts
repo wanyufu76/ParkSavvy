@@ -146,52 +146,52 @@ app.get("/api/visits/total", async (req, res) => {
   });
 });
 
-  app.get("/api/auth/google/callback", async (req, res) => {
-    try {
-      const { code, error } = req.query;
-      if (error) return res.redirect(`/?error=${encodeURIComponent(String(error))}`);
-      if (!code) return res.redirect("/?error=missing_code");
+  // app.get("/api/auth/google/callback", async (req, res) => {
+  //   try {
+  //     const { code, error } = req.query;
+  //     if (error) return res.redirect(`/?error=${encodeURIComponent(String(error))}`);
+  //     if (!code) return res.redirect("/?error=missing_code");
 
-      const redirectUri = `${req.protocol}://${req.get("host")}/api/auth/google/callback`;
-      const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
-        method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: new URLSearchParams({
-          client_id: process.env.GOOGLE_CLIENT_ID!,
-          client_secret: process.env.GOOGLE_CLIENT_SECRET!,
-          code: String(code),
-          grant_type: "authorization_code",
-          redirect_uri: redirectUri,
-        }),
-      });
-      const tokenJson = await tokenRes.json();
-      if (!tokenJson.access_token) return res.redirect("/?error=token_failed");
+  //     const redirectUri = `${req.protocol}://${req.get("host")}/api/auth/google/callback`;
+  //     const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
+  //       method: "POST",
+  //       headers: { "Content-Type": "application/x-www-form-urlencoded" },
+  //       body: new URLSearchParams({
+  //         client_id: process.env.GOOGLE_CLIENT_ID!,
+  //         client_secret: process.env.GOOGLE_CLIENT_SECRET!,
+  //         code: String(code),
+  //         grant_type: "authorization_code",
+  //         redirect_uri: redirectUri,
+  //       }),
+  //     });
+  //     const tokenJson = await tokenRes.json();
+  //     if (!tokenJson.access_token) return res.redirect("/?error=token_failed");
 
-      const userJson = await (await fetch("https://www.googleapis.com/oauth2/v2/userinfo", {
-        headers: { Authorization: `Bearer ${tokenJson.access_token}` },
-      })).json();
+  //     const userJson = await (await fetch("https://www.googleapis.com/oauth2/v2/userinfo", {
+  //       headers: { Authorization: `Bearer ${tokenJson.access_token}` },
+  //     })).json();
 
-      // 建立或取得使用者
-      let user = await storage.getUserByEmail(userJson.email);
-      if (!user) {
-        user = await storage.createUser({
-          username: userJson.email.split("@")[0],
-          email: userJson.email,
-          password: "oauth_user",
-          firstName: userJson.given_name ?? "",
-          lastName: userJson.family_name ?? "",
-        });
-      }
+  //     // 建立或取得使用者
+  //     let user = await storage.getUserByEmail(userJson.email);
+  //     if (!user) {
+  //       user = await storage.createUser({
+  //         username: userJson.email.split("@")[0],
+  //         email: userJson.email,
+  //         password: "oauth_user",
+  //         firstName: userJson.given_name ?? "",
+  //         lastName: userJson.family_name ?? "",
+  //       });
+  //     }
 
-      (req as any).login(user, (err: any) => {
-        if (err) return res.redirect("/?error=session_fail");
-        res.redirect("/?login=success");
-      });
-    } catch (e) {
-      console.error("Google OAuth error", e);
-      res.status(500).send("OAuth failed");
-    }
-  });
+  //     (req as any).login(user, (err: any) => {
+  //       if (err) return res.redirect("/?error=session_fail");
+  //       res.redirect("/?login=success");
+  //     });
+  //   } catch (e) {
+  //     console.error("Google OAuth error", e);
+  //     res.status(500).send("OAuth failed");
+  //   }
+  // });
 
   app.get("/api/auth/github", (req, res) => {
     // Redirect to GitHub OAuth
@@ -587,10 +587,11 @@ app.post("/api/uploads", requireAuth, upload.single("file"), async (req, res) =>
         const MARK_DIR = process.env.MARK_DIR || path.resolve(ROOT, "mark");                       // .../ParkSavvy/mark
         const INFER_PATH = process.env.INFER_PATH || path.join(MARK_DIR, "infer_location.py");     // 絕對路徑
         const PROCESSED_IMAGES_DIR = process.env.PROCESSED_IMAGES_DIR || path.resolve(ROOT, "processed_images");
-        // const BASE_IMAGES_DIR = process.env.BASE_IMAGES_DIR || path.resolve(ROOT, "base_images");
-        const BASE_IMAGES_DIR = process.env.BASE_IMAGES_DIR || ROOT;  //直接重根目錄找
+        const BASE_IMAGES_DIR =  process.env.BASE_IMAGES_DIR || path.resolve(ROOT, "base_images");
+        // const BASE_IMAGES_DIR = process.env.BASE_IMAGES_DIR || ROOT;  //直接重根目錄找
         const SIFT_SCRIPT = process.env.SIFT_SCRIPT || path.join(ROOT, "sift_v1.py");
         const PYTHON = process.env.PYTHON || "python";
+        const userLocation = location;
 
         if (!fsSync.existsSync(PROCESSED_IMAGES_DIR)) {
           fsSync.mkdirSync(PROCESSED_IMAGES_DIR, { recursive: true });
@@ -632,7 +633,9 @@ app.post("/api/uploads", requireAuth, upload.single("file"), async (req, res) =>
           ].join('\n');
 
           const { stdout, stderr, code: exitCode } = await runPython(["-c", pySnippet], {
-            PYTHONPATH: `${MARK_DIR}:${ROOT}`,
+            // PYTHONPATH: `${MARK_DIR}:${ROOT}`,
+            PYTHONPATH: `${MARK_DIR}${path.delimiter}${ROOT}`,
+
             PYTHONIOENCODING: "utf-8",
           });
           if (exitCode !== 0) {
@@ -649,29 +652,47 @@ app.post("/api/uploads", requireAuth, upload.single("file"), async (req, res) =>
         }
 
 
+        
+        // function pickBase(locOrArea: string): string {
+        //   // 支援 "A01" 或 "ib_A01"
+        //   const [folder, area] = locOrArea.includes("_")
+        //     ? locOrArea.split("_", 2)
+        //     : [location, locOrArea];
 
-        // 2) 選底圖：優先 processed_images/<區位>_output.jpg，否則 base_images/base_<區位>.jpg
-        // function pickBase(area: string): string {
+        //   const fromLoc = path.join(BASE_IMAGES_DIR, `${folder}_base_images`, `${area}_output.jpg`);
+        //   if (fsSync.existsSync(fromLoc)) return fromLoc;
+
         //   const processed = path.join(PROCESSED_IMAGES_DIR, `${area}_output.jpg`);
         //   if (fsSync.existsSync(processed)) return processed;
-        //   const base = path.join(BASE_IMAGES_DIR, `base_${area}.jpg`);
-        //   if (fsSync.existsSync(base)) return base;
-        //   throw new Error(`找不到底圖：${processed} 或 ${base}`);
+
+        //   const legacy = path.join(BASE_IMAGES_DIR, `${folder}_base_images`, `base_${area}.jpg`);
+        //   if (fsSync.existsSync(legacy)) return legacy;
+
+        //   throw new Error(`找不到底圖：\n  ${fromLoc}\n  ${processed}\n  ${legacy}`);
         // }
-        function pickBase(area: string): string {
-          // 先找 {BASE_IMAGES_DIR}/{location}_base_images/{A01}_output.jpg
-          const fromLoc = path.join(BASE_IMAGES_DIR, `${location}_base_images`, `${area}_output.jpg`);
+
+        function pickBase(inferredArea: string): string {
+          // inferredArea 形如 "ib_A01"；若不含底線則用 userLocation 當路名
+          const [loc, code] = inferredArea.includes("_")
+            ? inferredArea.split("_", 2)
+            : [userLocation, inferredArea];
+
+          // 1) 優先用此路名的底圖（你新的目錄結構）
+          const fromLoc = path.join(BASE_IMAGES_DIR, `${loc}_base_images`, `${code}_output.jpg`);
           if (fsSync.existsSync(fromLoc)) return fromLoc;
 
-          // 再找 processed_images/{A01}_output.jpg（已融合的最新成品）
-          const processed = path.join(PROCESSED_IMAGES_DIR, `${area}_output.jpg`);
-          if (fsSync.existsSync(processed)) return processed;
-
-          // 最後找 base_{A01}.jpg（舊命名）
-          const legacy = path.join(BASE_IMAGES_DIR, `base_${area}.jpg`);
+          // 2) 同路名的舊命名（base_A01.jpg）
+          const legacy = path.join(BASE_IMAGES_DIR, `${loc}_base_images`, `base_${code}.jpg`);
           if (fsSync.existsSync(legacy)) return legacy;
 
-          throw new Error(`找不到底圖：\n  ${fromLoc}\n  ${processed}\n  ${legacy}`);
+          // 3) 已融合的成品（若之前做過），這裡也用 "路名_區碼"
+          const processed = path.join(PROCESSED_IMAGES_DIR, loc, `${code}_output.jpg`);
+          if (fsSync.existsSync(processed)) return processed;
+
+          throw new Error(`找不到底圖：
+          ${fromLoc}
+          ${legacy}
+          ${processed}`);
         }
 
 
@@ -693,13 +714,14 @@ app.post("/api/uploads", requireAuth, upload.single("file"), async (req, res) =>
         // const inferredArea = await inferArea(uploadAbsPath);
         // const basePath = pickBase(inferredArea);
         // 取得純區域代號（A01/B01），記得把使用者選的 location 傳進去
-        const inferredArea = await inferArea(uploadAbsPath, location);
+        // ❌ 原本：const inferredArea = await inferArea(uploadAbsPath, location);
+        const inferredArea = await inferArea(uploadAbsPath, userLocation);
 
-        // ★ 回寫資料庫：inferred_area = "<location>_<A01>"
-        const inferredAreaForDb = `${location}_${inferredArea}`;
         await supabase.from("image_uploads")
-            .update({ inferred_area: inferredAreaForDb })
-            .eq("id", (upload_record as any).id);
+          .update({ inferred_area: inferredArea })
+          .eq("id", (upload_record as any).id);
+
+
         // try {
         //   await supabase.from("image_uploads")
         //     .update({ inferred_area: inferredAreaForDb })
@@ -710,10 +732,16 @@ app.post("/api/uploads", requireAuth, upload.single("file"), async (req, res) =>
         // }
 
 // 選底圖並融合
-const basePath = pickBase(inferredArea);
+        const basePath = pickBase(inferredArea);
+        // const fusedPath = path.join(PROCESSED_IMAGES_DIR, `${areaWithLoc}_output.jpg`); // 覆蓋更新
+        // const fusedPath = path.join(PROCESSED_IMAGES_DIR, `${inferredArea}_output.jpg`);
+        // 把 inferredArea 拆成 loc 和 code
+        const [loc, code] = inferredArea.includes("_")
+          ? inferredArea.split("_", 2)
+          : [userLocation, inferredArea];
 
-        const fusedPath = path.join(PROCESSED_IMAGES_DIR, `${inferredArea}_output.jpg`); // 覆蓋更新
-
+        // 正確輸出：processed_images/ib/A01_output.jpg
+        const fusedPath = path.join(PROCESSED_IMAGES_DIR, loc, `${code}_output.jpg`);
         await fuseWithSift(basePath, uploadAbsPath, fusedPath);
         console.log(`[uploads] ✅ 推論區位=${inferredArea}，已輸出融合：${fusedPath}`);
       } catch (e) {
