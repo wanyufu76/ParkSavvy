@@ -30,160 +30,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import type { ImageUpload } from "@shared/schema";
-
-// 📸 CameraPreview 子元件
-function CameraPreview({ onCapture }: { onCapture: (file: File) => void }) {
-  const videoRef = useRef<HTMLVideoElement | null>(null);
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const [previewSrc, setPreviewSrc] = useState<string | null>(null);
-  const streamRef = useRef<MediaStream | null>(null);
-
-  // 啟動相機
-  const startCamera = async () => {
-    try {
-      if (streamRef.current) {
-        streamRef.current.getTracks().forEach((t) => t.stop());
-      }
-
-      // 嘗試 Full HD
-      streamRef.current = await navigator.mediaDevices.getUserMedia({
-        video: {
-          facingMode: "environment",
-          width: { ideal: 1920 },
-          height: { ideal: 1080 },
-        },
-        audio: false,
-      });
-
-      if (videoRef.current) {
-        videoRef.current.srcObject = streamRef.current;
-        videoRef.current.onloadedmetadata = () => {
-          if (canvasRef.current && videoRef.current) {
-            // 用相機原始解析度設定 canvas
-            canvasRef.current.width = videoRef.current.videoWidth || 1280;
-            canvasRef.current.height = videoRef.current.videoHeight || 720;
-          }
-        };
-      }
-    } catch (err) {
-      console.error("相機開啟失敗:", err);
-    }
-  };
-
-  useEffect(() => {
-    startCamera();
-    return () => {
-      if (streamRef.current) {
-        streamRef.current.getTracks().forEach((t) => t.stop());
-      }
-    };
-  }, []);
-
-  // 繪製虛線框
-  useEffect(() => {
-    const ctx = canvasRef.current?.getContext("2d");
-    if (!ctx || !canvasRef.current) return;
-
-    const draw = () => {
-      if (!canvasRef.current || !videoRef.current || previewSrc) return;
-      ctx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
-
-      ctx.strokeStyle = "rgba(255,255,255,0.8)";
-      ctx.lineWidth = 3;
-      ctx.setLineDash([10, 10]);
-
-      // 機車框
-      ctx.strokeRect(
-        canvasRef.current.width * 0.1,
-        canvasRef.current.height * 0.4,
-        canvasRef.current.width * 0.8,
-        canvasRef.current.height * 0.5
-      );
-
-      requestAnimationFrame(draw);
-    };
-    draw();
-  }, [previewSrc]);
-
-  // 拍照
-  const handleCapture = () => {
-    if (!videoRef.current) return;
-    const w = videoRef.current.videoWidth || 1280;
-    const h = videoRef.current.videoHeight || 720;
-
-    const canvas = document.createElement("canvas");
-    canvas.width = w;
-    canvas.height = h;
-
-    const ctx = canvas.getContext("2d");
-    if (ctx) {
-      ctx.drawImage(videoRef.current, 0, 0, w, h);
-      setPreviewSrc(canvas.toDataURL("image/jpeg", 1.0)); // 高品質 JPEG
-    }
-  };
-
-  // 確認使用
-  const handleConfirm = () => {
-    if (!previewSrc) return;
-    const arr = previewSrc.split(",");
-    const mime = arr[0].match(/:(.*?);/)?.[1] || "image/jpeg";
-    const bstr = atob(arr[1]);
-    let n = bstr.length;
-    const u8arr = new Uint8Array(n);
-    while (n--) u8arr[n] = bstr.charCodeAt(n);
-    const file = new File([u8arr], `capture-${Date.now()}.jpg`, { type: mime });
-    onCapture(file);
-    setPreviewSrc(null);
-    startCamera();
-  };
-
-  // 重拍
-  const handleRetake = () => {
-    setPreviewSrc(null);
-    startCamera();
-  };
-
-  return (
-    <div className="relative w-full max-w-md mx-auto">
-      {!previewSrc ? (
-        <>
-          <video
-            ref={videoRef}
-            autoPlay
-            playsInline
-            muted
-            className="w-full h-auto bg-black rounded-lg object-cover"
-          />
-          <canvas
-            ref={canvasRef}
-            className="absolute top-0 left-0 w-full h-full pointer-events-none"
-          />
-          <div className="flex justify-center mt-2">
-            <Button
-              type="button"
-              onClick={handleCapture}
-              className="p-3 rounded-full bg-primary text-white hover:bg-primary/90"
-            >
-              <Camera className="h-6 w-6" />
-            </Button>
-          </div>
-        </>
-      ) : (
-        <>
-          <img src={previewSrc} alt="預覽" className="w-full rounded-lg" />
-          <div className="flex justify-center gap-4 mt-2">
-            <Button variant="secondary" onClick={handleRetake}>
-              重新拍攝
-            </Button>
-            <Button className="bg-primary text-white" onClick={handleConfirm}>
-              使用此相片
-            </Button>
-          </div>
-        </>
-      )}
-    </div>
-  );
-}
+import CameraPreview from "@/components/CameraPreview";
 
 export default function Upload() {
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
@@ -628,20 +475,20 @@ export default function Upload() {
 
       {/* 📸 Dialog for Camera */}
       <Dialog open={showCamera} onOpenChange={setShowCamera}>
-        <DialogContent className="sm:max-w-[500px]">
-          <DialogHeader>
-            <DialogTitle>
-              請將機車置於下列虛線框內<br />並保留上方背景
-            </DialogTitle>
-          </DialogHeader>
-          <CameraPreview
-            onCapture={(file) => {
-              setSelectedFiles((prev) => [...prev, file]);
-              setShowCamera(false);
-            }}
-          />
-        </DialogContent>
-      </Dialog>
+      <DialogContent className="sm:max-w-[500px]">
+        <DialogHeader>
+          <DialogTitle>
+            請將機車置於下列虛線框內<br />並保留上方背景
+          </DialogTitle>
+        </DialogHeader>
+        <CameraPreview
+          onCapture={(file) => {
+            setSelectedFiles((prev) => [...prev, file]);
+            setShowCamera(false);
+          }}
+        />
+      </DialogContent>
+    </Dialog>
     </div>
   );
 }
