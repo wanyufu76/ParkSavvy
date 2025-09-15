@@ -14,6 +14,13 @@ import {
   Settings,
   Shield,
 } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
 
 /* ---------- 宣告使用者型別 ---------- */
 interface AuthUser {
@@ -27,6 +34,7 @@ interface AuthUser {
 
 export default function Navigation() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [showLogoutDialog, setShowLogoutDialog] = useState(false); // ✅ 新增登出確認對話框
   const [location] = useLocation();
   const { isAuthenticated, user } = useAuth();
 
@@ -47,7 +55,8 @@ export default function Navigation() {
     { path: "/contact", label: "聯絡我們", icon: Mail },
   ];
 
-  const handleLogout = async () => {
+  /* ---------- 真正執行登出 ---------- */
+  const handleLogoutConfirm = async () => {
     try {
       await fetch("/api/logout", { method: "POST" });
       window.location.href = "/";
@@ -127,8 +136,9 @@ export default function Navigation() {
                     </span>
                   )}
 
+                  {/* ✅ 改成先開 Dialog */}
                   <Button
-                    onClick={handleLogout}
+                    onClick={() => setShowLogoutDialog(true)}
                     variant="outline"
                     size="sm"
                     className="ml-4"
@@ -228,8 +238,9 @@ export default function Navigation() {
                   </span>
                 )}
 
+                {/* ✅ 改成先開 Dialog */}
                 <Button
-                  onClick={handleLogout}
+                  onClick={() => setShowLogoutDialog(true)}
                   variant="outline"
                   className="w-full mt-4"
                 >
@@ -248,6 +259,33 @@ export default function Navigation() {
           </div>
         </div>
       )}
+
+      {/* ✅ 登出確認對話框（加強排版 + 響應式） */}
+      <Dialog open={showLogoutDialog} onOpenChange={setShowLogoutDialog}>
+        <DialogContent className="sm:max-w-[400px] rounded-xl">
+          <DialogHeader>
+            <DialogTitle className="text-lg font-bold">確認登出</DialogTitle>
+            <DialogDescription className="mt-3 text-base text-gray-600 leading-relaxed">
+              你確定要登出嗎？
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col-reverse sm:flex-row justify-end gap-2 pt-4">
+            <Button
+              variant="outline"
+              onClick={() => setShowLogoutDialog(false)}
+              className="w-full sm:w-auto"
+            >
+              取消
+            </Button>
+            <Button
+              onClick={handleLogoutConfirm}
+              className="w-full sm:w-auto bg-primary hover:bg-primary/90"
+            >
+              確認
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </nav>
   );
 }
