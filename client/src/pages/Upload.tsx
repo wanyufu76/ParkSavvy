@@ -185,17 +185,32 @@ export default function Upload() {
     <div className="min-h-screen bg-gray-50">
       <Navigation />
 
-      <div className="max-w-4xl mx-auto px-4 py-8">
-        <div className="mb-8 flex items-center justify-between">
-          <div>
-            <h2 className="text-3xl font-bold text-gray-900 mb-4">
-              <UploadIcon className="h-8 w-8 text-primary mr-3 inline" />
-              影像上傳區
-            </h2>
-            <p className="text-lg text-gray-600">
-              上傳行車記錄器畫面，協助改善AI模型準確度
-            </p>
-          </div>
+      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          <div className="mb-8 flex items-center justify-between">
+            <div>
+              <h2 className="text-3xl font-bold text-gray-900 mb-4">
+                <UploadIcon className="h-8 w-8 text-primary mr-3 inline" />
+                影像上傳區
+              </h2>
+              <p className="text-lg text-gray-600">上傳車位資訊影像，協助提供最即時的街景</p>
+            </div>
+
+            <div className="flex flex-col items-end">
+              <Button
+                variant={uploads.length > 0 ? "default" : "secondary"}
+                disabled={uploads.length === 0}
+                onClick={() => (window.location.href = "/shared-videos")}
+                className={uploads.length === 0 ? "cursor-not-allowed opacity-50" : ""}
+              >
+                <Video className="h-4 w-4 mr-2" />
+                查看共享影片
+              </Button>
+              {uploads.length === 0 && (
+                <p className="text-sm text-gray-500 mt-2 max-w-48 text-right">
+                上傳影片方可與他人共享資源
+                </p>
+              )}
+            </div>
         </div>
 
         {/* 上傳說明 */}
