@@ -138,10 +138,10 @@ export default function SharedVideos() {
             </Button>
             <h1 className="text-3xl font-bold text-gray-900">
               <Users className="h-8 w-8 text-primary mr-3 inline" />
-              社群共享影片
+              社群共享影像
             </h1>
           </div>
-          <p className="text-lg text-gray-600">查看社群用戶分享的停車場景影片，共同改善AI模型</p>
+          <p className="text-lg text-gray-600">查看社群用戶分享的停車場景影像，取得最新街景及車格資訊</p>
           <div className="mt-4 flex items-center text-sm text-gray-500">
             <Video className="h-4 w-4 mr-2" />
             共 {allVideos.length} 筆檔案
