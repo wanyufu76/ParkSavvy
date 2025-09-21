@@ -7,14 +7,20 @@ export default function CameraPreview({ onCapture }: { onCapture: (file: File) =
   const overlayRef = useRef<HTMLCanvasElement | null>(null);
   const [previewSrc, setPreviewSrc] = useState<string | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const trackRef = useRef<MediaStreamTrack | null>(null);
 
-  // 縮放倍率
+  // 框的大小資訊
+  const [frameSize, setFrameSize] = useState({ width: 0, height: 0, centerY: 0 });
+
+  // 水平角度 (gamma = 左右傾斜)
+  const [roll, setRoll] = useState(0);
+
+  // ====== Zoom 狀態（雙模式）======
   const [zoom, setZoom] = useState(1);
-  const maxZoom = 3;
+  const [maxZoom, setMaxZoom] = useState(3);
   const minZoom = 1;
   const zoomStep = 0.2;
-
-  // 手指縮放距離記錄
+  const useHardwareZoom = useRef(false);
   const pinchRef = useRef<number | null>(null);
 
   // 啟動相機
@@ -29,12 +35,21 @@ export default function CameraPreview({ onCapture }: { onCapture: (file: File) =
       });
       if (videoRef.current) {
         videoRef.current.srcObject = streamRef.current;
+      }
 
-        // log 能力
-        const track = streamRef.current.getVideoTracks()[0];
-        console.log("📷 Camera Capabilities:", track.getCapabilities());
-        console.log("⚙️ Camera Settings:", track.getSettings());
-        console.log("🔒 Camera Constraints:", track.getConstraints());
+      const track = streamRef.current.getVideoTracks()[0];
+      trackRef.current = track;
+
+      const caps = track.getCapabilities?.();
+      if (caps && (caps as any).zoom) {
+        const z = (caps as any).zoom;
+        useHardwareZoom.current = true;
+        setMaxZoom(z.max ?? 3);
+        setZoom(z.min ?? 1);
+      } else {
+        useHardwareZoom.current = false;
+        setMaxZoom(3);
+        setZoom(1);
       }
     } catch (err) {
       console.error("相機開啟失敗:", err);
@@ -50,6 +65,51 @@ export default function CameraPreview({ onCapture }: { onCapture: (file: File) =
     };
   }, []);
 
+  useEffect(() => {
+    if (useHardwareZoom.current && trackRef.current) {
+      trackRef.current
+        .applyConstraints({ advanced: [{ zoom }] })
+        .catch((err) => console.warn("Zoom applyConstraints failed:", err));
+    }
+  }, [zoom]);
+
+  // 監聽裝置方向
+  useEffect(() => {
+    const enableOrientation = async () => {
+      if (
+        typeof DeviceOrientationEvent !== "undefined" &&
+        typeof (DeviceOrientationEvent as any).requestPermission === "function"
+      ) {
+        const response = await (DeviceOrientationEvent as any).requestPermission();
+        if (response !== "granted") {
+          console.warn("未允許裝置方向存取，水平儀將無法使用");
+          return;
+        }
+      }
+
+      let smooth = 0;
+      const alpha = 0.1;
+      let lastUpdate = 0;
+
+      const handleOrientation = (event: DeviceOrientationEvent) => {
+        if (event.gamma !== null) {
+          const now = Date.now();
+          if (now - lastUpdate > 300) {
+            lastUpdate = now;
+            smooth = smooth + alpha * (event.gamma - smooth);
+            const rounded5 = Math.round(smooth / 5) * 5;
+            setRoll(rounded5);
+          }
+        }
+      };
+
+      window.addEventListener("deviceorientation", handleOrientation);
+      return () => window.removeEventListener("deviceorientation", handleOrientation);
+    };
+
+    enableOrientation();
+  }, []);
+
   // 繪製虛線框
   useEffect(() => {
     const ctx = overlayRef.current?.getContext("2d");
@@ -60,25 +120,30 @@ export default function CameraPreview({ onCapture }: { onCapture: (file: File) =
 
       overlayRef.current.width = overlayRef.current.clientWidth;
       overlayRef.current.height = overlayRef.current.clientHeight;
-
       ctx.clearRect(0, 0, overlayRef.current.width, overlayRef.current.height);
-      ctx.strokeStyle = "rgba(255,255,255,0.9)";
-      ctx.lineWidth = 3;
-      ctx.setLineDash([10, 10]);
 
-      ctx.strokeRect(
-        overlayRef.current.width * 0.1,
-        overlayRef.current.height * 0.45, // 調整這裡可以上下移
-        overlayRef.current.width * 0.8,
-        overlayRef.current.height * 0.5
-      );
+      ctx.strokeStyle = "#FFFFFF";
+      ctx.lineWidth = 4;
+      ctx.setLineDash([8, 8]);
+
+      const fw = overlayRef.current.width * 0.8;
+      const fh = overlayRef.current.height * 0.5;
+      const fx = overlayRef.current.width * 0.1;
+      const fy = overlayRef.current.height * 0.45;
+
+      ctx.strokeRect(fx, fy, fw, fh);
+
+      setFrameSize({
+        width: fw,
+        height: fh,
+        centerY: fy + fh / 2,
+      });
 
       requestAnimationFrame(draw);
     };
     draw();
   }, [previewSrc]);
 
-  // 拍照 + 裁切
   const handleCapture = () => {
     if (!videoRef.current) return;
     const w = videoRef.current.videoWidth;
@@ -90,7 +155,7 @@ export default function CameraPreview({ onCapture }: { onCapture: (file: File) =
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
-    if (zoom > 1) {
+    if (!useHardwareZoom.current && zoom > 1) {
       const cropW = w / zoom;
       const cropH = h / zoom;
       const offsetX = (w - cropW) / 2;
@@ -100,11 +165,9 @@ export default function CameraPreview({ onCapture }: { onCapture: (file: File) =
       ctx.drawImage(videoRef.current, 0, 0, w, h);
     }
 
-    console.log(`📸 Captured image size: ${w}x${h}, zoom=${zoom}`);
     setPreviewSrc(canvas.toDataURL("image/jpeg", 1.0));
   };
 
-  // 確認使用
   const handleConfirm = () => {
     if (!previewSrc) return;
     const arr = previewSrc.split(",");
@@ -139,16 +202,15 @@ export default function CameraPreview({ onCapture }: { onCapture: (file: File) =
 
     const handleTouchMove = (e: TouchEvent) => {
       if (e.touches.length === 2 && pinchRef.current) {
-        e.preventDefault(); // 防止瀏覽器縮放整頁
+        e.preventDefault();
         const dx = e.touches[0].clientX - e.touches[1].clientX;
         const dy = e.touches[0].clientY - e.touches[1].clientY;
         const newDist = Math.sqrt(dx * dx + dy * dy);
         const diff = newDist - pinchRef.current;
         if (Math.abs(diff) > 10) {
           setZoom((z) => {
-            const newZoom = Math.min(maxZoom, Math.max(minZoom, z + diff * 0.005));
-            console.log("🔍 Pinch Zoom:", newZoom);
-            return newZoom;
+            const next = Math.min(maxZoom, Math.max(minZoom, z + diff * 0.005));
+            return next;
           });
           pinchRef.current = newDist;
         }
@@ -168,7 +230,7 @@ export default function CameraPreview({ onCapture }: { onCapture: (file: File) =
       video.removeEventListener("touchmove", handleTouchMove);
       video.removeEventListener("touchend", handleTouchEnd);
     };
-  }, []);
+  }, [maxZoom]);
 
   return (
     <div className="relative w-full max-w-md mx-auto">
@@ -181,25 +243,61 @@ export default function CameraPreview({ onCapture }: { onCapture: (file: File) =
               playsInline
               muted
               className="w-full h-auto bg-black rounded-lg object-cover touch-none"
-              style={{ transform: `scale(${zoom})`, transformOrigin: "center" }}
+              style={
+                !useHardwareZoom.current
+                  ? { transform: `scale(${zoom})`, transformOrigin: "center" }
+                  : undefined
+              }
             />
+
+            {/* 摩托車輔助圖 */}
+            <img
+              src="/scooter.png"
+              alt="構圖輔助"
+              style={{
+                width: `${Math.min(frameSize.width * 0.9, frameSize.height * 0.9)}px`,
+                top: `${frameSize.centerY}px`,
+                filter:
+                  "invert(1) brightness(200%) contrast(200%) drop-shadow(0 0 5px black)",
+              }}
+              className="absolute left-1/2 -translate-x-1/2 -translate-y-1/2 opacity-90 pointer-events-none z-20"
+            />
+
+            {/* 虛線框 */}
             <canvas
               ref={overlayRef}
-              className="absolute top-0 left-0 w-full h-full pointer-events-none"
+              className="absolute top-0 left-0 w-full h-full pointer-events-none z-10"
             />
+
+            {/* 水平儀數字 + 提示 */}
+            <div className="absolute top-2 left-1/2 -translate-x-1/2 text-center">
+              <p
+                className="text-2xl font-bold"
+                style={{
+                  color:
+                    Math.abs(roll) <= 5
+                      ? "lime"
+                      : Math.abs(roll) <= 10
+                      ? "orange"
+                      : "red",
+                }}
+              >
+                {roll}°
+              </p>
+              {Math.abs(roll) > 10 && (
+                <p className="mt-1 text-sm text-red-500 font-semibold bg-black/60 px-2 py-1 rounded">
+                  請保持水平
+                </p>
+              )}
+            </div>
+
             {/* 縮放按鈕 */}
             <div className="absolute bottom-3 right-3 flex gap-2">
               <Button
                 type="button"
                 size="icon"
                 className="rounded-full bg-black/50 text-white hover:bg-black/70"
-                onClick={() =>
-                  setZoom((z) => {
-                    const newZoom = Math.max(minZoom, z - zoomStep);
-                    console.log("➖ Button Zoom:", newZoom);
-                    return newZoom;
-                  })
-                }
+                onClick={() => setZoom((z) => Math.max(minZoom, z - zoomStep))}
               >
                 <Minus className="h-5 w-5" />
               </Button>
@@ -207,18 +305,13 @@ export default function CameraPreview({ onCapture }: { onCapture: (file: File) =
                 type="button"
                 size="icon"
                 className="rounded-full bg-black/50 text-white hover:bg-black/70"
-                onClick={() =>
-                  setZoom((z) => {
-                    const newZoom = Math.min(maxZoom, z + zoomStep);
-                    console.log("➕ Button Zoom:", newZoom);
-                    return newZoom;
-                  })
-                }
+                onClick={() => setZoom((z) => Math.min(maxZoom, z + zoomStep))}
               >
                 <Plus className="h-5 w-5" />
               </Button>
             </div>
           </div>
+
           <div className="flex justify-center mt-2">
             <Button
               type="button"
