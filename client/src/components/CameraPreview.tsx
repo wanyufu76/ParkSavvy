@@ -2,7 +2,11 @@ import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Camera, Plus, Minus } from "lucide-react";
 
-export default function CameraPreview({ onCapture }: { onCapture: (file: File) => void }) {
+export default function CameraPreview({
+  onCapture,
+}: {
+  onCapture: (file: File) => void;
+}) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const overlayRef = useRef<HTMLCanvasElement | null>(null);
   const [previewSrc, setPreviewSrc] = useState<string | null>(null);
@@ -30,7 +34,11 @@ export default function CameraPreview({ onCapture }: { onCapture: (file: File) =
         streamRef.current.getTracks().forEach((t) => t.stop());
       }
       streamRef.current = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: "environment", width: { ideal: 1920 }, height: { ideal: 1080 } },
+        video: {
+          facingMode: "environment",
+          width: { ideal: 1920 },
+          height: { ideal: 1080 },
+        },
         audio: false,
       });
       if (videoRef.current) {
@@ -73,7 +81,7 @@ export default function CameraPreview({ onCapture }: { onCapture: (file: File) =
     }
   }, [zoom]);
 
-  // 監聽裝置方向
+  // 監聽裝置方向，更新水平角度
   useEffect(() => {
     const enableOrientation = async () => {
       if (
@@ -82,24 +90,34 @@ export default function CameraPreview({ onCapture }: { onCapture: (file: File) =
       ) {
         const response = await (DeviceOrientationEvent as any).requestPermission();
         if (response !== "granted") {
-          console.warn("未允許裝置方向存取，水平儀將無法使用");
+          alert("請允許感測器存取，才能使用水平儀功能");
           return;
         }
       }
 
       let smooth = 0;
-      const alpha = 0.1;
+      const alpha = 0.1; // 平滑係數 (0~1)
       let lastUpdate = 0;
 
       const handleOrientation = (event: DeviceOrientationEvent) => {
-        if (event.gamma !== null) {
-          const now = Date.now();
-          if (now - lastUpdate > 300) {
-            lastUpdate = now;
-            smooth = smooth + alpha * (event.gamma - smooth);
-            const rounded5 = Math.round(smooth / 5) * 5;
-            setRoll(rounded5);
-          }
+        if (event.gamma === null || event.beta === null) return;
+
+        const now = Date.now();
+        if (now - lastUpdate > 1000) {
+          // 每 1000ms 更新一次
+          lastUpdate = now;
+
+          // 🔥 判斷螢幕方向
+          const isLandscape =
+            window.screen.orientation?.type.startsWith("landscape") ||
+            Math.abs(window.orientation as number) === 90;
+
+          // 直立 → gamma (左右)，橫向 → beta (上下當左右)
+          const raw = isLandscape ? event.beta! : event.gamma!;
+
+          // 平滑
+          smooth = smooth + alpha * (raw - smooth);
+          setRoll(Math.round(smooth)); // 四捨五入成整數
         }
       };
 
@@ -285,7 +303,7 @@ export default function CameraPreview({ onCapture }: { onCapture: (file: File) =
                 {roll}°
               </p>
               {Math.abs(roll) > 20 && (
-                <p className="mt-1 text-sm text-red-500 font-semibold bg-black/60 px-2 py-1 rounded">
+                <p className="mt-1 text-sm font-semibold bg-black/60 px-2 py-1 rounded text-white">
                   請保持水平
                 </p>
               )}
