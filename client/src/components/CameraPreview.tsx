@@ -255,7 +255,7 @@ export default function CameraPreview({ onCapture }: { onCapture: (file: File) =
               src="/scooter.png"
               alt="構圖輔助"
               style={{
-                width: `${Math.min(frameSize.width * 0.9, frameSize.height * 0.9)}px`,
+                width: `${Math.min(frameSize.width * 0.99, frameSize.height * 0.99)}px`,
                 top: `${frameSize.centerY}px`,
                 filter:
                   "invert(1) brightness(200%) contrast(200%) drop-shadow(0 0 5px black)",
@@ -275,16 +275,16 @@ export default function CameraPreview({ onCapture }: { onCapture: (file: File) =
                 className="text-2xl font-bold"
                 style={{
                   color:
-                    Math.abs(roll) <= 5
+                    Math.abs(roll) <= 10
                       ? "lime"
-                      : Math.abs(roll) <= 10
+                      : Math.abs(roll) <= 20
                       ? "orange"
                       : "red",
                 }}
               >
                 {roll}°
               </p>
-              {Math.abs(roll) > 10 && (
+              {Math.abs(roll) > 20 && (
                 <p className="mt-1 text-sm text-red-500 font-semibold bg-black/60 px-2 py-1 rounded">
                   請保持水平
                 </p>
