@@ -145,9 +145,9 @@ export default function CameraPreview({
       ctx.setLineDash([8, 8]);
 
       const fw = overlayRef.current.width * 0.8;
-      const fh = overlayRef.current.height * 0.5;
+      const fh = overlayRef.current.height * 0.55;
       const fx = overlayRef.current.width * 0.1;
-      const fy = overlayRef.current.height * 0.45;
+      const fy = overlayRef.current.height * 0.40;
 
       ctx.strokeRect(fx, fy, fw, fh);
 
@@ -273,7 +273,7 @@ export default function CameraPreview({
               src="/scooter.png"
               alt="構圖輔助"
               style={{
-                width: `${Math.min(frameSize.width * 0.99, frameSize.height * 0.99)}px`,
+                width: `${Math.min(frameSize.width * 1.2, frameSize.height * 1.2)}px`,
                 top: `${frameSize.centerY}px`,
                 filter:
                   "invert(1) brightness(200%) contrast(200%) drop-shadow(0 0 5px black)",
