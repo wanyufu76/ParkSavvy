@@ -103,8 +103,8 @@ export default function CameraPreview({
         if (event.gamma === null || event.beta === null) return;
 
         const now = Date.now();
-        if (now - lastUpdate > 1000) {
-          // 每 1000ms 更新一次
+        if (now - lastUpdate > 500) {
+          // 每 500ms 更新一次
           lastUpdate = now;
 
           // 🔥 判斷螢幕方向
@@ -260,7 +260,7 @@ export default function CameraPreview({
               autoPlay
               playsInline
               muted
-              className="w-full h-auto bg-black rounded-lg object-cover touch-none"
+              className="w-full max-h-[70vh] bg-black rounded-lg object-cover touch-none"
               style={
                 !useHardwareZoom.current
                   ? { transform: `scale(${zoom})`, transformOrigin: "center" }
@@ -342,8 +342,16 @@ export default function CameraPreview({
         </>
       ) : (
         <>
-          <img src={previewSrc} alt="預覽" className="w-full rounded-lg" />
-          <div className="flex justify-center gap-4 mt-2">
+          <div className="flex flex-col items-center">
+          {/* 照片預覽 */}
+          <img
+            src={previewSrc}
+            alt="預覽"
+            className="w-auto max-w-full max-h-[70vh] object-contain rounded-lg"
+          />
+
+          {/* 按鈕區塊 */}
+          <div className="flex justify-center gap-4 mt-4">
             <Button variant="secondary" onClick={handleRetake}>
               重新拍攝
             </Button>
@@ -351,6 +359,7 @@ export default function CameraPreview({
               使用此相片
             </Button>
           </div>
+        </div>
         </>
       )}
     </div>
