@@ -892,10 +892,10 @@ export default function MapWithSpots({ onSpotClick }: Props) {
           coords: [
             { lat: 25.012669, lng: 121.543353 },
             { lat: 25.012629, lng: 121.543384 },
-            { lat: 25.012610, lng: 121.543357 },
-            { lat: 25.012649, lng: 121.543325 }
+            { lat: 25.012603, lng: 121.543345 },
+            { lat: 25.012642, lng: 121.543313 }
           ],
-          label: { lat: 25.012619, lng: 121.543325 }, 
+          label: { lat: 25.012614, lng: 121.543318 }, 
           pano:  { lat: 25.012649, lng: 121.543358 }
         },
         {
@@ -903,10 +903,10 @@ export default function MapWithSpots({ onSpotClick }: Props) {
           coords: [
             { lat: 25.012619, lng: 121.543392 },
             { lat: 25.012580, lng: 121.543423 },
-            { lat: 25.012560, lng: 121.543395 },
-            { lat: 25.012599, lng: 121.543364 }
+            { lat: 25.012553, lng: 121.543383 },
+            { lat: 25.012592, lng: 121.543352 }
           ],
-          label: { lat: 25.012569, lng: 121.543364 }, 
+          label: { lat: 25.012564, lng: 121.543357 }, 
           pano:  { lat: 25.012589, lng: 121.543393 }
         },
         {
@@ -914,10 +914,10 @@ export default function MapWithSpots({ onSpotClick }: Props) {
           coords: [
             { lat: 25.012564, lng: 121.543436 },
             { lat: 25.012525, lng: 121.543468 },
-            { lat: 25.012505, lng: 121.543439 },
-            { lat: 25.012544, lng: 121.543408 }
+            { lat: 25.012498, lng: 121.543427 },
+            { lat: 25.012537, lng: 121.543396 }
           ],
-          label: { lat: 25.012519, lng: 121.543410 },
+          label: { lat: 25.012509, lng: 121.543397 },
           pano:  { lat: 25.012534, lng: 121.543438 }
         },
       ],
@@ -932,10 +932,10 @@ export default function MapWithSpots({ onSpotClick }: Props) {
           coords: [
             { lat: 25.012501, lng: 121.543489 },
             { lat: 25.012471, lng: 121.543514 },
-            { lat: 25.012454, lng: 121.543486 },
-            { lat: 25.012484, lng: 121.543461 }
+            { lat: 25.012447, lng: 121.543474 },
+            { lat: 25.012477, lng: 121.543449 }
           ],
-          label: { lat: 25.012460, lng: 121.543460 },
+          label: { lat: 25.012454, lng: 121.543451 },
           pano:  { lat: 25.012478, lng: 121.543488 }
         },
         {
@@ -943,10 +943,10 @@ export default function MapWithSpots({ onSpotClick }: Props) {
           coords: [
             { lat: 25.012459, lng: 121.543524 },
             { lat: 25.012429, lng: 121.543549 },
-            { lat: 25.012412, lng: 121.543521 },
-            { lat: 25.012442, lng: 121.543496 }
+            { lat: 25.012405, lng: 121.543509 },
+            { lat: 25.012435, lng: 121.543484 }
           ],
-          label: { lat: 25.012419, lng: 121.543495 },
+          label: { lat: 25.012413, lng: 121.543486 },
           pano:  { lat: 25.012436, lng: 121.543523 }
         },
         {
@@ -954,10 +954,10 @@ export default function MapWithSpots({ onSpotClick }: Props) {
           coords: [
             { lat: 25.012417, lng: 121.543558 },
             { lat: 25.012372, lng: 121.543594 },
-            { lat: 25.012355, lng: 121.543566 },
-            { lat: 25.012401, lng: 121.543531 }
+            { lat: 25.012348, lng: 121.543554 },
+            { lat: 25.012394, lng: 121.543519 }
           ],
-          label: { lat: 25.012370, lng: 121.543535 },
+          label: { lat: 25.012364, lng: 121.543526 },
           pano:  { lat: 25.012387, lng: 121.543563 }
         }
       ],
@@ -972,10 +972,10 @@ export default function MapWithSpots({ onSpotClick }: Props) {
           coords: [
             { lat: 25.012349, lng: 121.543616 },
             { lat: 25.012302, lng: 121.543654 },
-            { lat: 25.012285, lng: 121.543631 },
-            { lat: 25.012332, lng: 121.543593 }
+            { lat: 25.012278, lng: 121.543619 },
+            { lat: 25.012325, lng: 121.543581 }
           ],
-          label: { lat: 25.012300, lng: 121.543598 },
+          label: { lat: 25.012294, lng: 121.543589 },
           pano:  { lat: 25.012316, lng: 121.543624 }
         },
         {
@@ -983,10 +983,10 @@ export default function MapWithSpots({ onSpotClick }: Props) {
           coords: [
             { lat: 25.012291, lng: 121.543664 },
             { lat: 25.012252, lng: 121.543695 },
-            { lat: 25.012236, lng: 121.543673 },
-            { lat: 25.012274, lng: 121.543641 }
+            { lat: 25.012229, lng: 121.543661 },
+            { lat: 25.012267, lng: 121.543629 }
           ],
-          label: { lat: 25.012245, lng: 121.543644 },
+          label: { lat: 25.012239, lng: 121.543635 },
           pano:  { lat: 25.012259, lng: 121.543672 }
         },
         {
@@ -994,10 +994,10 @@ export default function MapWithSpots({ onSpotClick }: Props) {
           coords: [
             { lat: 25.012240, lng: 121.543705 },
             { lat: 25.012202, lng: 121.543737 },
-            { lat: 25.012185, lng: 121.543714 },
-            { lat: 25.012223, lng: 121.543682 }
+            { lat: 25.012178, lng: 121.543702 },
+            { lat: 25.012216, lng: 121.543670 }
           ],
-          label: { lat: 25.012195, lng: 121.543686 },
+          label: { lat: 25.012189, lng: 121.543677 },
           pano:  { lat: 25.012213, lng: 121.543710 }
         },
       ],
@@ -1012,10 +1012,10 @@ export default function MapWithSpots({ onSpotClick }: Props) {
           coords: [
             { lat: 25.012183, lng: 121.543750 },
             { lat: 25.012151, lng: 121.543778 },
-            { lat: 25.012136, lng: 121.543753 },
-            { lat: 25.012167, lng: 121.543726 }
+            { lat: 25.012129, lng: 121.543741 },
+            { lat: 25.012160, lng: 121.543714 }
           ],
-          label: { lat: 25.012142, lng: 121.543727 },
+          label: { lat: 25.012136, lng: 121.543718 },
           pano:  { lat: 25.012158, lng: 121.543753 }
         },
         {
@@ -1023,10 +1023,10 @@ export default function MapWithSpots({ onSpotClick }: Props) {
           coords: [
             { lat: 25.012140, lng: 121.543788 },
             { lat: 25.012100, lng: 121.543821 },
-            { lat: 25.012084, lng: 121.543797 },
-            { lat: 25.012124, lng: 121.543764 }
+            { lat: 25.012077, lng: 121.543785 },
+            { lat: 25.012117, lng: 121.543752 }
           ],
-          label: { lat: 25.012096, lng: 121.543767 },
+          label: { lat: 25.012090, lng: 121.543758 },
           pano:  { lat: 25.012109, lng: 121.543795 }
         },
       ],
@@ -1041,10 +1041,10 @@ export default function MapWithSpots({ onSpotClick }: Props) {
           coords: [
             { lat: 25.012079, lng: 121.543839 },
             { lat: 25.012057, lng: 121.543857 },
-            { lat: 25.012040, lng: 121.543833 },
-            { lat: 25.012062, lng: 121.543815 }
+            { lat: 25.012033, lng: 121.543821 },
+            { lat: 25.012055, lng: 121.543803 }
           ],
-          label: { lat: 25.012043, lng: 121.543810 },
+          label: { lat: 25.012037, lng: 121.543801 },
           pano:  { lat: 25.012059, lng: 121.543837 }
         },
         {
@@ -1052,10 +1052,10 @@ export default function MapWithSpots({ onSpotClick }: Props) {
           coords: [
             { lat: 25.012047, lng: 121.543866 },
             { lat: 25.012022, lng: 121.543886 },
-            { lat: 25.012005, lng: 121.543861 },
-            { lat: 25.012030, lng: 121.543841 }
+            { lat: 25.011998, lng: 121.543849 },
+            { lat: 25.012023, lng: 121.543829 }
           ],
-          label: { lat: 25.012008, lng: 121.543838 },
+          label: { lat: 25.012002, lng: 121.543829 },
           pano:  { lat: 25.012024, lng: 121.543865 }
         },
         {
@@ -1063,10 +1063,10 @@ export default function MapWithSpots({ onSpotClick }: Props) {
           coords: [
             { lat: 25.012009, lng: 121.543897 },
             { lat: 25.011977, lng: 121.543924 },
-            { lat: 25.011959, lng: 121.543900 },
-            { lat: 25.011991, lng: 121.543873 }
+            { lat: 25.011952, lng: 121.543888 },
+            { lat: 25.011984, lng: 121.543861 }
           ],
-          label: { lat: 25.011973, lng: 121.543871 },
+          label: { lat: 25.011966, lng: 121.543860 },
           pano:  { lat: 25.011984, lng: 121.543899 }
         },
       ],
@@ -1081,10 +1081,10 @@ export default function MapWithSpots({ onSpotClick }: Props) {
           coords: [
             { lat: 25.011977, lng: 121.543924 },
             { lat: 25.011900, lng: 121.543990 },
-            { lat: 25.011881, lng: 121.543965 },
-            { lat: 25.011958, lng: 121.543899 }
+            { lat: 25.011874, lng: 121.543953 },
+            { lat: 25.011951, lng: 121.543887 }
           ],
-          label: { lat: 25.011912, lng: 121.543918 },
+          label: { lat: 25.011905, lng: 121.543907 },
           pano:  { lat: 25.011929, lng: 121.543945 }
         },
       ],
