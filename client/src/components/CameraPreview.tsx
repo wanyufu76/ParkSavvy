@@ -1,6 +1,15 @@
 import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Camera, Plus, Minus } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Checkbox } from "@/components/ui/checkbox"; // shadcn/ui
+import goodExample from "@/assets/good_example.jpg";
+import badExample from "@/assets/bad_example.jpg";
 
 export default function CameraPreview({
   onCapture,
@@ -19,13 +28,17 @@ export default function CameraPreview({
   // 水平角度 (gamma = 左右傾斜)
   const [roll, setRoll] = useState(0);
 
-  // ====== Zoom 狀態（雙模式）======
+  // Zoom 狀態
   const [zoom, setZoom] = useState(1);
   const [maxZoom, setMaxZoom] = useState(3);
   const minZoom = 1;
   const zoomStep = 0.2;
   const useHardwareZoom = useRef(false);
   const pinchRef = useRef<number | null>(null);
+
+  // 範例 Dialog 狀態
+  const [showGuide, setShowGuide] = useState(true);
+  const [skipGuide, setSkipGuide] = useState(false);
 
   // 啟動相機
   const startCamera = async () => {
@@ -64,6 +77,16 @@ export default function CameraPreview({
     }
   };
 
+  const [dontShowThisLogin, setDontShowThisLogin] = useState(false);
+
+  // 元件載入時：若本次登入已勾選「不再提醒」，就不要開 Dialog
+  useEffect(() => {
+    const skipped = sessionStorage.getItem("guide_skip_this_login") === "1";
+    if (skipped) {
+      setShowGuide(false);
+    }
+  }, []);
+
   useEffect(() => {
     startCamera();
     return () => {
@@ -81,7 +104,7 @@ export default function CameraPreview({
     }
   }, [zoom]);
 
-  // 監聽裝置方向，更新水平角度
+  // 監聽裝置方向
   useEffect(() => {
     const enableOrientation = async () => {
       if (
@@ -96,7 +119,7 @@ export default function CameraPreview({
       }
 
       let smooth = 0;
-      const alpha = 0.1; // 平滑係數 (0~1)
+      const alpha = 0.1;
       let lastUpdate = 0;
 
       const handleOrientation = (event: DeviceOrientationEvent) => {
@@ -104,25 +127,21 @@ export default function CameraPreview({
 
         const now = Date.now();
         if (now - lastUpdate > 500) {
-          // 每 500ms 更新一次
           lastUpdate = now;
 
-          // 🔥 判斷螢幕方向
           const isLandscape =
             window.screen.orientation?.type.startsWith("landscape") ||
             Math.abs(window.orientation as number) === 90;
 
-          // 直立 → gamma (左右)，橫向 → beta (上下當左右)
           const raw = isLandscape ? event.beta! : event.gamma!;
-
-          // 平滑
           smooth = smooth + alpha * (raw - smooth);
-          setRoll(Math.round(smooth)); // 四捨五入成整數
+          setRoll(Math.round(smooth));
         }
       };
 
       window.addEventListener("deviceorientation", handleOrientation);
-      return () => window.removeEventListener("deviceorientation", handleOrientation);
+      return () =>
+        window.removeEventListener("deviceorientation", handleOrientation);
     };
 
     enableOrientation();
@@ -147,7 +166,7 @@ export default function CameraPreview({
       const fw = overlayRef.current.width * 0.8;
       const fh = overlayRef.current.height * 0.55;
       const fx = overlayRef.current.width * 0.1;
-      const fy = overlayRef.current.height * 0.40;
+      const fy = overlayRef.current.height * 0.4;
 
       ctx.strokeRect(fx, fy, fw, fh);
 
@@ -252,6 +271,67 @@ export default function CameraPreview({
 
   return (
     <div className="relative w-full max-w-md mx-auto">
+      {/* 範例 Dialog */}
+      <Dialog open={showGuide} onOpenChange={setShowGuide}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>拍照範例</DialogTitle>
+          </DialogHeader>
+
+          <div className="flex gap-4 items-start">
+            <div className="flex-1">
+              <img
+                src={goodExample}
+                alt="好的範例"
+                className="rounded w-full h-auto max-w-[720px]"
+              />
+              <p className="text-green-600 font-bold text-center">合格範例 ✅</p>
+              <p className="text-xs text-muted-foreground text-center mt-1">
+                （保持水平、完整機車）
+              </p>
+            </div>
+
+            <div className="flex-1">
+              <img
+                src={badExample}
+                alt="壞的範例"
+                className="rounded w-full h-auto max-w-[720px]"
+                onError={(e) => {
+                  console.error("badExample 載入失敗：請檢查路徑/副檔名/大小寫");
+                  (e.currentTarget as HTMLImageElement).src = goodExample; // 臨時 fallback，避免版面跑掉
+                }}
+              />
+              <p className="text-red-600 font-bold text-center">不合格範例 ❌</p>
+              <p className="text-xs text-muted-foreground text-center mt-1">
+                （歪斜、裁切、未拍攝機車）
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 mt-2">
+            <Checkbox
+              id="dont-show-this-login"
+              checked={dontShowThisLogin}
+              onCheckedChange={(v) => setDontShowThisLogin(!!v)}
+            />
+            <label htmlFor="dont-show-this-login" className="text-sm text-muted-foreground select-none cursor-pointer">
+              此次登入不再提醒
+            </label>
+          </div>
+
+          <Button
+            className="mt-4 w-full"
+            onClick={() => {
+              setShowGuide(false);
+              if (!skipGuide) setSkipGuide(true);
+              if (dontShowThisLogin) sessionStorage.setItem("guide_skip_this_login", "1");
+            }}
+          >
+            我了解了
+          </Button>
+        </DialogContent>
+      </Dialog>
+
       {!previewSrc ? (
         <>
           <div className="relative overflow-hidden">
@@ -273,7 +353,10 @@ export default function CameraPreview({
               src="/scooter.png"
               alt="構圖輔助"
               style={{
-                width: `${Math.min(frameSize.width * 1.2, frameSize.height * 1.2)}px`,
+                width: `${Math.min(
+                  frameSize.width * 1.2,
+                  frameSize.height * 1.2
+                )}px`,
                 top: `${frameSize.centerY}px`,
                 filter:
                   "invert(1) brightness(200%) contrast(200%) drop-shadow(0 0 5px black)",
@@ -343,23 +426,20 @@ export default function CameraPreview({
       ) : (
         <>
           <div className="flex flex-col items-center">
-          {/* 照片預覽 */}
-          <img
-            src={previewSrc}
-            alt="預覽"
-            className="w-auto max-w-full max-h-[70vh] object-contain rounded-lg"
-          />
-
-          {/* 按鈕區塊 */}
-          <div className="flex justify-center gap-4 mt-4">
-            <Button variant="secondary" onClick={handleRetake}>
-              重新拍攝
-            </Button>
-            <Button className="bg-primary text-white" onClick={handleConfirm}>
-              使用此相片
-            </Button>
+            <img
+              src={previewSrc}
+              alt="預覽"
+              className="w-auto max-w-full max-h-[70vh] object-contain rounded-lg"
+            />
+            <div className="flex justify-center gap-4 mt-4">
+              <Button variant="secondary" onClick={handleRetake}>
+                重新拍攝
+              </Button>
+              <Button className="bg-primary text-white" onClick={handleConfirm}>
+                使用此相片
+              </Button>
+            </div>
           </div>
-        </div>
         </>
       )}
     </div>
