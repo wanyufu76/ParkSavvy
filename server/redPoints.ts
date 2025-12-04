@@ -106,16 +106,42 @@ export function registerRedPointsRoutes(app: Express) {
               route_key,
               group_key,
             });
+            
           }
         } catch (err) {
           console.warn(`❌ 讀檔失敗 ${f}`, err);
         }
       }
 
-      res.json(merged);
+      const uniqueMap = new Map<string, any>();
+
+      for (const pt of merged) {
+        const loc = norm(pt.location || pt.inferred_area || "");
+        const idx = pt.motor_index ?? "";
+        const key = `${loc}#${idx}`;
+
+        // 如果想保留最新一筆，可以改成「每次都覆蓋」：
+        // uniqueMap.set(key, pt);
+        if (!uniqueMap.has(key)) {
+          uniqueMap.set(key, pt);
+        }
+      }
+
+      const deduped = [...uniqueMap.values()];
+
+      console.log(
+        "🔴 /api/red-points merged =",
+        merged.length,
+        "去重後 =",
+        deduped.length,
+      );
+
+      // 5) 回傳給前端
+      res.json(deduped);
     } catch (err) {
       console.error("❌ 載入紅點資料失敗", err);
       res.status(500).json({ error: "讀取紅點資料失敗" });
     }
   });
 }
+

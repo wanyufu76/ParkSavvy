@@ -17,3 +17,7 @@ Thumbs.db
 map_outputs/
 /mark/__pycache__/
 /mark/base_config/
+processed_images/
+tr_base_images/
+ib_base_images/
+/client/src/assets

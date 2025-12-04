@@ -146,7 +146,7 @@ export default function SharedVideos() {
             <Video className="h-4 w-4 mr-2" />
             共 {allVideos.length} 筆檔案
             <Users className="h-4 w-4 ml-4 mr-2" />
-            來自 {uniqueUsers.length} 位用戶
+            來自 {uniqueUsers.length}0 位用戶
           </div>
         </div>
 

@@ -7,9 +7,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Checkbox } from "@/components/ui/checkbox"; // shadcn/ui
+import { Checkbox } from "@/components/ui/checkbox";
 import goodExample from "@/assets/good_example.jpg";
 import badExample from "@/assets/bad_example.jpg";
+
+// 新增：引入 ONNX 偵測器
+import { createOnnxDetector } from "@/lib/onnxDetector";
 
 export default function CameraPreview({
   onCapture,
@@ -21,6 +24,10 @@ export default function CameraPreview({
   const [previewSrc, setPreviewSrc] = useState<string | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const trackRef = useRef<MediaStreamTrack | null>(null);
+
+  // 第二層偵測框畫布 & 工作畫布
+  const detCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const workCanvasRef = useRef<HTMLCanvasElement | null>(null);
 
   // 框的大小資訊
   const [frameSize, setFrameSize] = useState({ width: 0, height: 0, centerY: 0 });
@@ -39,6 +46,16 @@ export default function CameraPreview({
   // 範例 Dialog 狀態
   const [showGuide, setShowGuide] = useState(true);
   const [skipGuide, setSkipGuide] = useState(false);
+
+  // 偵測器（只建一次）
+  const detectorRef = useRef(
+    createOnnxDetector({
+      modelUrl: "/models/yolov8n.onnx",
+      inputSize: 640,
+      confThres: 0.7,
+      normalize: true,
+    })
+  );
 
   // 啟動相機
   const startCamera = async () => {
@@ -79,7 +96,7 @@ export default function CameraPreview({
 
   const [dontShowThisLogin, setDontShowThisLogin] = useState(false);
 
-  // 元件載入時：若本次登入已勾選「不再提醒」，就不要開 Dialog
+  // 進來就看一次 Session 設定
   useEffect(() => {
     const skipped = sessionStorage.getItem("guide_skip_this_login") === "1";
     if (skipped) {
@@ -89,6 +106,7 @@ export default function CameraPreview({
 
   useEffect(() => {
     startCamera();
+    detectorRef.current.load().catch(console.warn);
     return () => {
       if (streamRef.current) {
         streamRef.current.getTracks().forEach((t) => t.stop());
@@ -104,7 +122,7 @@ export default function CameraPreview({
     }
   }, [zoom]);
 
-  // 監聽裝置方向
+  // 監聽裝置方向（夾值避免跳大數）
   useEffect(() => {
     const enableOrientation = async () => {
       if (
@@ -131,11 +149,12 @@ export default function CameraPreview({
 
           const isLandscape =
             window.screen.orientation?.type.startsWith("landscape") ||
-            Math.abs(window.orientation as number) === 90;
+            Math.abs((window as any).orientation as number) === 90;
 
           const raw = isLandscape ? event.beta! : event.gamma!;
           smooth = smooth + alpha * (raw - smooth);
-          setRoll(Math.round(smooth));
+          const val = Math.round(smooth);
+          setRoll(Number.isFinite(val) ? Math.max(-89, Math.min(89, val)) : 0);
         }
       };
 
@@ -147,7 +166,7 @@ export default function CameraPreview({
     enableOrientation();
   }, []);
 
-  // 繪製虛線框
+  // 繪製虛線框（原本功能）
   useEffect(() => {
     const ctx = overlayRef.current?.getContext("2d");
     if (!ctx || !overlayRef.current) return;
@@ -224,7 +243,7 @@ export default function CameraPreview({
     startCamera();
   };
 
-  // 雙指縮放
+  // 雙指縮放（原本功能）
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
@@ -269,6 +288,116 @@ export default function CameraPreview({
     };
   }, [maxZoom]);
 
+  // 即時偵測 + 畫框
+  useEffect(() => {
+    let raf = 0;
+    let running = true;
+
+    const loop = async () => {
+      if (!running) return;
+      const v = videoRef.current;
+      const dc = detCanvasRef.current;
+      if (!v || !dc || previewSrc) {
+        raf = requestAnimationFrame(loop);
+        return;
+      }
+      if (v.readyState < 2) {
+        raf = requestAnimationFrame(loop);
+        return;
+      }
+
+      // 擷取當前幀（若是軟體 zoom，做置中裁切再縮回）
+      if (!workCanvasRef.current) workCanvasRef.current = document.createElement("canvas");
+      const work = workCanvasRef.current;
+      const vw = v.videoWidth;
+      const vh = v.videoHeight;
+      work.width = vw;
+      work.height = vh;
+      const wctx = work.getContext("2d")!;
+      if (!useHardwareZoom.current && zoom > 1) {
+        const cropW = Math.round(vw / zoom);
+        const cropH = Math.round(vh / zoom);
+        const sx = Math.floor((vw - cropW) / 2);
+        const sy = Math.floor((vh - cropH) / 2);
+        wctx.drawImage(v, sx, sy, cropW, cropH, 0, 0, vw, vh);
+      } else {
+        wctx.drawImage(v, 0, 0, vw, vh);
+      }
+      const frame = wctx.getImageData(0, 0, vw, vh);
+
+      // 推論（回傳原始相機座標系）
+      const { boxes } = await detectorRef.current.detect(frame);
+
+      // 對齊 detCanvas 實際像素（含 DPR）
+      const dpr = window.devicePixelRatio || 1;
+      const CW = dc.clientWidth;
+      const CH = dc.clientHeight;
+      if (dc.width !== Math.round(CW * dpr) || dc.height !== Math.round(CH * dpr)) {
+        dc.width = Math.round(CW * dpr);
+        dc.height = Math.round(CH * dpr);
+      }
+      const ctx = dc.getContext("2d")!;
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.clearRect(0, 0, dc.width, dc.height);
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+      // === 用「實際渲染矩形」精準對齊（解決上下略差）===
+      const rect = v.getBoundingClientRect();            // video 實際渲染框
+      const parentRect = dc.getBoundingClientRect();     // 畫布所在容器框
+      const visZoom = (!useHardwareZoom.current && zoom > 1) ? zoom : 1;
+
+      // video 的可視寬高與在容器內的偏移
+      const visW = rect.width;
+      const visH = rect.height;
+      const outerOffX = rect.left - parentRect.left;
+      const outerOffY = rect.top  - parentRect.top;
+
+      // object-cover 內容與 inner 偏移（再加上你的 zoom）
+      const baseScale  = Math.max(visW / vw, visH / vh);
+      const totalScale = baseScale * visZoom;
+      const drawW = vw * totalScale;
+      const drawH = vh * totalScale;
+      const offX = outerOffX + (visW - drawW) / 2;
+      const offY = outerOffY + (visH - drawH) / 2;
+
+      // debug：紫框顯示可視內容（可留著）
+      ctx.strokeStyle = "#ff00ff";
+      ctx.lineWidth = 2;
+      ctx.strokeRect(offX, offY, drawW, drawH);
+      ctx.strokeStyle = "#00ffff";
+      ctx.fillStyle = "rgba(0,0,0,0.6)";
+      ctx.font = `14px system-ui`;
+
+      // 畫偵測框（raw 相機座標 → 螢幕座標）
+      for (const b of boxes) {
+        const sx = offX + b.x1 * totalScale;
+        const sy = offY + b.y1 * totalScale;
+        const sw = (b.x2 - b.x1) * totalScale;
+        const sh = (b.y2 - b.y1) * totalScale;
+
+        ctx.strokeRect(sx, sy, sw, sh);
+
+        // ⬇ 如果你的 onnxDetector 還沒加 sigmoid，可先臨時夾值避免爆 %（不想改別檔的話）
+        const safeConf = Math.max(0, Math.min(1, b.conf));
+        const label = `${b.cls} ${(safeConf * 100).toFixed(0)}%`;
+
+        const tw = ctx.measureText(label).width + 8;
+        const th = 18;
+        ctx.fillRect(sx, Math.max(0, sy - th), tw, th);
+        ctx.fillStyle = "#fff";
+        ctx.fillText(label, sx + 4, Math.max(12, sy - 4));
+        ctx.fillStyle = "rgba(0,0,0,0.6)";
+      }
+      raf = requestAnimationFrame(loop);
+    };
+
+    loop();
+    return () => {
+      running = false;
+      cancelAnimationFrame(raf);
+    };
+  }, [previewSrc, zoom]);
+
   return (
     <div className="relative w-full max-w-md mx-auto">
       {/* 範例 Dialog */}
@@ -298,7 +427,7 @@ export default function CameraPreview({
                 className="rounded w-full h-auto max-w-[720px]"
                 onError={(e) => {
                   console.error("badExample 載入失敗：請檢查路徑/副檔名/大小寫");
-                  (e.currentTarget as HTMLImageElement).src = goodExample; // 臨時 fallback，避免版面跑掉
+                  (e.currentTarget as HTMLImageElement).src = goodExample;
                 }}
               />
               <p className="text-red-600 font-bold text-center">不合格範例 ❌</p>
@@ -364,10 +493,16 @@ export default function CameraPreview({
               className="absolute left-1/2 -translate-x-1/2 -translate-y-1/2 opacity-90 pointer-events-none z-20"
             />
 
-            {/* 虛線框 */}
+            {/* 虛線框（原本） */}
             <canvas
               ref={overlayRef}
               className="absolute top-0 left-0 w-full h-full pointer-events-none z-10"
+            />
+
+            {/* 偵測框畫布（在最底層，以免遮到你的輔助圖） */}
+            <canvas
+              ref={detCanvasRef}
+              className="absolute top-0 left-0 w-full h-full pointer-events-none z-0"
             />
 
             {/* 水平儀數字 + 提示 */}
@@ -431,7 +566,7 @@ export default function CameraPreview({
               alt="預覽"
               className="w-auto max-w-full max-h-[70vh] object-contain rounded-lg"
             />
-            <div className="flex justify-center gap-4 mt-4">
+            <div className="flex justify中心 gap-4 mt-4">
               <Button variant="secondary" onClick={handleRetake}>
                 重新拍攝
               </Button>

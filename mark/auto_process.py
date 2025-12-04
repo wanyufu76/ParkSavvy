@@ -409,6 +409,35 @@ def resolve_base_config_dir(inferred_area_value: str) -> str:
     p2 = f"base_config_{area_id}"
     return p1 if os.path.isdir(p1) else p2
 
+def fallback_area_by_plates(plates: list[str]) -> str | None:
+    """
+    根據 motor_records 中的 plate_text 出現紀錄，投票推論最常出現的區域
+    """
+    if not plates:
+        return None
+
+    area_votes = {}
+    for plate in plates:
+        res = supabase.table("motor_records")\
+            .select("location")\
+            .eq("plate_text", plate)\
+            .execute()
+        rows = res.data or []
+
+        for row in rows:
+            loc = row.get("location")
+            if not loc:
+                continue
+            area_votes[loc] = area_votes.get(loc, 0) + 1
+
+    if not area_votes:
+        return None
+
+    # 回傳票數最多的區域
+    inferred_area = max(area_votes, key=area_votes.get)
+    print(f"🔁 備案推論：根據車牌 → 最可能區域為 {inferred_area}")
+    return inferred_area
+
 if __name__ == "__main__":
     images = get_unprocessed_images_raw()
     if not images:
@@ -449,9 +478,37 @@ if __name__ == "__main__":
 
             # ❺ 沒找到合法區域 → 標 processed 跳過（避免 based_mark 爆）
             if not inferred_area_value:
-                print("❌ 無法推論合法區域（None 或格式不符）→ 標記 processed 跳過此圖")
-                mark_as_processed(image_id)
-                continue
+                print("❌ 無法推論合法區域（None 或格式不符）→ 嘗試使用車牌備案判定")
+
+                # 嘗試讀取 result.json
+                result_json_path = os.path.join(r"E:\ParkSavvy\uploads", filename + "_result.json")
+                plate_texts = []
+                if os.path.exists(result_json_path):
+                    try:
+                        with open(result_json_path, "r", encoding="utf-8") as f:
+                            result_data = json.load(f)
+                            plate_texts = [
+                                m["plate_text"] for m in result_data
+                                if isinstance(m.get("plate_text"), str) and m["plate_text"].strip()
+                            ]
+                    except Exception as e:
+                        print(f"⚠️ 無法讀取 result.json: {e}")
+
+                # 嘗試 fallback
+                inferred_area_value = fallback_area_by_plates(plate_texts)
+                if inferred_area_value:
+                    print(f"✅ 使用車牌推論區域成功 → {inferred_area_value}")
+                    resp = (
+                        supabase.table("image_uploads")
+                        .update({"inferred_area": inferred_area_value})
+                        .eq("id", image_id)
+                        .execute()
+                    )
+                    print("[DB] update inferred_area →", inferred_area_value, "| data:", resp.data)
+                else:
+                    print("❌ 使用車牌也無法推論區域 → 標記 processed 跳過此圖")
+                    mark_as_processed(image_id)
+                    continue
 
             prepared.append({
                 "id": image_id,
@@ -529,3 +586,4 @@ if __name__ == "__main__":
                 .execute()
 
     print("\n✅ 所有地區處理完成！")
+
